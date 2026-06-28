@@ -1,0 +1,36 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  scores Score[]
+
+  @@map("users")
+}
+
+model Score {
+  id         String   @id @default(uuid())
+  userId     String
+  gameKey    String
+  points     Int
+  accuracy   Float?
+  durationMs Int?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([gameKey, points(sort: Desc)])
+  @@map("scores")
+}
