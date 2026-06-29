@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: semantia-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: semantia
+      POSTGRES_PASSWORD: semantia
+      POSTGRES_DB: semantia
+    ports:
+      - '5432:5432'
+    volumes:
+      - semantia-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U semantia -d semantia']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  semantia-pgdata:
