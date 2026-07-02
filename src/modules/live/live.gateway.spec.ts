@@ -131,7 +131,24 @@ describe('LiveGateway', () => {
     gateway.server = server as unknown as Server;
   });
 
-  describe('handleConnection', () => {
+  describe('auth middleware (afterInit)', () => {
+    /** Registra o middleware num namespace fake e o executa contra o socket. */
+    async function runMiddleware(socket: unknown): Promise<Error | undefined> {
+      let middleware:
+        ((s: unknown, next: (err?: Error) => void) => void) | undefined;
+      const namespace = {
+        use: jest.fn(
+          (fn: (s: unknown, next: (err?: Error) => void) => void) => {
+            middleware = fn;
+          },
+        ),
+      };
+      gateway.afterInit(namespace as unknown as Server);
+      return new Promise((resolve) => {
+        middleware!(socket, (err?: Error) => resolve(err));
+      });
+    }
+
     it('attaches the authenticated user to the socket', async () => {
       const { socket } = buildSocket('valid-jwt');
       jwtService.verifyAsync.mockResolvedValue({
@@ -150,33 +167,43 @@ describe('LiveGateway', () => {
         }),
       );
 
-      await gateway.handleConnection(socket);
+      const err = await runMiddleware(socket);
 
+      expect(err).toBeUndefined();
       expect(socket.data.user).toEqual(teacher);
-      expect(socket.disconnect).not.toHaveBeenCalled();
     });
 
-    it('disconnects a socket with an invalid token', async () => {
+    it('rejects the handshake with an invalid token', async () => {
       const { socket } = buildSocket('bad-jwt');
       jwtService.verifyAsync.mockRejectedValue(new Error('invalid'));
 
-      await gateway.handleConnection(socket);
+      const err = await runMiddleware(socket);
 
-      expect(socket.emit).toHaveBeenCalledWith('error', {
-        code: 'UNAUTHORIZED',
-        message: 'Invalid or missing authentication token',
-      });
-      expect(socket.disconnect).toHaveBeenCalledWith(true);
+      expect(err?.message).toBe('UNAUTHORIZED');
       expect(socket.data.user).toBeUndefined();
     });
 
-    it('disconnects a socket without a token before verifying', async () => {
+    it('rejects the handshake without a token before verifying', async () => {
       const { socket } = buildSocket(undefined);
 
-      await gateway.handleConnection(socket);
+      const err = await runMiddleware(socket);
 
       expect(jwtService.verifyAsync).not.toHaveBeenCalled();
-      expect(socket.disconnect).toHaveBeenCalledWith(true);
+      expect(err?.message).toBe('UNAUTHORIZED');
+    });
+
+    it('rejects the handshake for a deleted user', async () => {
+      const { socket } = buildSocket('valid-jwt');
+      jwtService.verifyAsync.mockResolvedValue({
+        sub: 'ghost',
+        email: 'ghost@semantia.app',
+      });
+      users.findById.mockResolvedValue(null);
+
+      const err = await runMiddleware(socket);
+
+      expect(err?.message).toBe('UNAUTHORIZED');
+      expect(socket.data.user).toBeUndefined();
     });
   });
 

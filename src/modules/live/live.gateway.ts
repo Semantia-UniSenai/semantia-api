@@ -1,7 +1,7 @@
 import { HttpException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
-  OnGatewayConnection,
+  OnGatewayInit,
   OnGatewayDisconnect,
   SubscribeMessage,
   WebSocketGateway,
@@ -83,7 +83,7 @@ const roomOf = (sessionId: string): string => `session:${sessionId}`;
     credentials: true,
   },
 })
-export class LiveGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
@@ -99,33 +99,39 @@ export class LiveGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly endSession: EndSessionUseCase,
   ) {}
 
-  /** Handshake auth: JWT in `handshake.auth.token`; invalid → disconnect. */
-  async handleConnection(socket: LiveSocket): Promise<void> {
-    try {
-      const token = (socket.handshake.auth as { token?: string })?.token;
-      if (!token) throw new Error('missing token');
+  /**
+   * Auth no middleware do namespace — roda na fase de handshake, ANTES de o
+   * socket ser entregue e de qualquer evento ser processado. Autenticar em
+   * `handleConnection` (async) abre uma corrida: um `session:join` emitido
+   * logo no `connect` chegaria antes do JWT ser verificado.
+   * Falha → cliente recebe `connect_error` com message `UNAUTHORIZED`.
+   */
+  afterInit(server: Server): void {
+    server.use((socket: LiveSocket, next: (err?: Error) => void) => {
+      this.authenticate(socket)
+        .then(() => next())
+        .catch(() => next(new Error('UNAUTHORIZED')));
+    });
+  }
 
-      const payload = await this.jwtService.verifyAsync<{
-        sub: string;
-        email: string;
-        role?: UserRole;
-      }>(token);
+  private async authenticate(socket: LiveSocket): Promise<void> {
+    const token = (socket.handshake.auth as { token?: string })?.token;
+    if (!token) throw new Error('missing token');
 
-      const user = await this.users.findById(payload.sub);
-      if (!user) throw new Error('user not found');
+    const payload = await this.jwtService.verifyAsync<{
+      sub: string;
+      email: string;
+      role?: UserRole;
+    }>(token);
 
-      socket.data.user = {
-        userId: user.id,
-        name: user.name,
-        role: user.role,
-      };
-    } catch {
-      socket.emit('error', {
-        code: 'UNAUTHORIZED',
-        message: 'Invalid or missing authentication token',
-      });
-      socket.disconnect(true);
-    }
+    const user = await this.users.findById(payload.sub);
+    if (!user) throw new Error('user not found');
+
+    socket.data.user = {
+      userId: user.id,
+      name: user.name,
+      role: user.role,
+    };
   }
 
   handleDisconnect(socket: LiveSocket): void {
