@@ -1,9 +1,11 @@
+import { UserRole } from '../../../shared/enums/user-role.enum';
 import { User } from '../entities/user.entity';
 
 export interface CreateUserData {
   name: string;
   email: string;
   passwordHash: string;
+  role: UserRole;
 }
 
 /**

@@ -25,6 +25,8 @@ import { SignUpUseCase } from './usecases/sign-up.usecase';
     GetMeUseCase,
     { provide: UserRepository, useClass: PrismaUserRepository },
   ],
-  exports: [JwtModule],
+  // UserRepository is exported so the live gateway can resolve display names
+  // for socket principals without re-binding the Prisma implementation.
+  exports: [JwtModule, UserRepository],
 })
 export class AuthModule {}

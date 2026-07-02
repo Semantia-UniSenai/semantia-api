@@ -6,11 +6,13 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
+import { UserRole } from '../enums/user-role.enum';
 
 /** Shape of the authenticated principal attached to the request. */
 export interface AuthUser {
   userId: string;
   email: string;
+  role: UserRole;
 }
 
 declare module 'express' {
@@ -40,8 +42,14 @@ export class JwtAuthGuard implements CanActivate {
       const payload = await this.jwtService.verifyAsync<{
         sub: string;
         email: string;
+        role?: UserRole;
       }>(token);
-      request.user = { userId: payload.sub, email: payload.email };
+      request.user = {
+        userId: payload.sub,
+        email: payload.email,
+        // Tokens minted before roles existed carry no role — treat as ALUNO.
+        role: payload.role ?? UserRole.ALUNO,
+      };
       return true;
     } catch {
       throw new UnauthorizedException('Invalid or expired token');

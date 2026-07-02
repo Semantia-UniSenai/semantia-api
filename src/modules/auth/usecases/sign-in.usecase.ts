@@ -34,11 +34,17 @@ export class SignInUseCase {
     const accessToken = await this.jwt.signAsync({
       sub: user.id,
       email: user.email,
+      role: user.role,
     });
 
     return {
       accessToken,
-      user: { id: user.id, name: user.name, email: user.email },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
     };
   }
 }

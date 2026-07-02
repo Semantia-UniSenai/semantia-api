@@ -12,10 +12,15 @@ model User {
   name         String
   email        String   @unique
   passwordHash String
+  role         Role     @default(ALUNO)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  scores Score[]
+  scores           Score[]
+  taughtClasses    SchoolClass[] @relation("TaughtClasses")
+  classMemberships ClassMember[]
+  taughtSessions   LiveSession[] @relation("TaughtSessions")
+  chatMessages     ChatMessage[]
 
   @@map("users")
 }
@@ -33,4 +38,86 @@ model Score {
 
   @@index([gameKey, points(sort: Desc)])
   @@map("scores")
+}
+
+enum Role {
+  PROFESSOR
+  ALUNO
+}
+
+enum SessionStatus {
+  LIVE
+  ENDED
+}
+
+model SchoolClass {
+  id         String   @id @default(uuid())
+  name       String
+  teacherId  String
+  inviteCode String   @unique
+  createdAt  DateTime @default(now())
+
+  teacher  User          @relation("TaughtClasses", fields: [teacherId], references: [id], onDelete: Cascade)
+  members  ClassMember[]
+  sessions LiveSession[]
+
+  @@map("classes")
+}
+
+model ClassMember {
+  id       String   @id @default(uuid())
+  classId  String
+  userId   String
+  joinedAt DateTime @default(now())
+
+  class SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, userId])
+  @@map("class_members")
+}
+
+model LiveSession {
+  id        String        @id @default(uuid())
+  title     String
+  teacherId String
+  classId   String?
+  joinToken String        @unique
+  status    SessionStatus @default(LIVE)
+  startedAt DateTime      @default(now())
+  endedAt   DateTime?
+
+  teacher  User               @relation("TaughtSessions", fields: [teacherId], references: [id], onDelete: Cascade)
+  class    SchoolClass?       @relation(fields: [classId], references: [id], onDelete: SetNull)
+  segments TranscriptSegment[]
+  messages ChatMessage[]
+
+  @@map("live_sessions")
+}
+
+model TranscriptSegment {
+  id        String   @id @default(uuid())
+  sessionId String
+  seq       Int
+  text      String
+  createdAt DateTime @default(now())
+
+  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, seq])
+  @@map("transcript_segments")
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  sessionId String
+  userId    String
+  text      String
+  createdAt DateTime @default(now())
+
+  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@map("chat_messages")
 }

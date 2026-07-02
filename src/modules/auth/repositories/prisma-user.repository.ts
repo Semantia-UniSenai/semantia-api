@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
+import { UserRole } from '../../../shared/enums/user-role.enum';
 import { User } from '../entities/user.entity';
 import { CreateUserData, UserRepository } from './user.repository';
 
@@ -12,16 +13,16 @@ export class PrismaUserRepository extends UserRepository {
 
   async findByEmail(email: string): Promise<User | null> {
     const row = await this.prisma.user.findUnique({ where: { email } });
-    return row ? new User(row) : null;
+    return row ? new User({ ...row, role: row.role as UserRole }) : null;
   }
 
   async findById(id: string): Promise<User | null> {
     const row = await this.prisma.user.findUnique({ where: { id } });
-    return row ? new User(row) : null;
+    return row ? new User({ ...row, role: row.role as UserRole }) : null;
   }
 
   async create(data: CreateUserData): Promise<User> {
     const row = await this.prisma.user.create({ data });
-    return new User(row);
+    return new User({ ...row, role: row.role as UserRole });
   }
 }

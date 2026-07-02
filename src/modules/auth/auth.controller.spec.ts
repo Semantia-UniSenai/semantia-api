@@ -1,3 +1,4 @@
+import { UserRole } from '../../shared/enums/user-role.enum';
 import { AuthController } from './auth.controller';
 import { AuthResponseDto, UserDto } from './dtos/auth-response.dto';
 import { GetMeUseCase } from './usecases/get-me.usecase';
@@ -21,7 +22,7 @@ describe('AuthController', () => {
     const dto = { name: 'Ana', email: 'a@a.com', password: 'secret1' };
     const response: AuthResponseDto = {
       accessToken: 't',
-      user: { id: '1', name: 'Ana', email: 'a@a.com' },
+      user: { id: '1', name: 'Ana', email: 'a@a.com', role: UserRole.ALUNO },
     };
     signUp.execute.mockResolvedValue(response);
 
@@ -38,11 +39,20 @@ describe('AuthController', () => {
   });
 
   it('delegates me to GetMeUseCase with the current user id', async () => {
-    const user: UserDto = { id: 'user-1', name: 'Ana', email: 'a@a.com' };
+    const user: UserDto = {
+      id: 'user-1',
+      name: 'Ana',
+      email: 'a@a.com',
+      role: UserRole.ALUNO,
+    };
     getMe.execute.mockResolvedValue(user);
 
     await expect(
-      controller.getMe({ userId: 'user-1', email: 'a@a.com' }),
+      controller.getMe({
+        userId: 'user-1',
+        email: 'a@a.com',
+        role: UserRole.ALUNO,
+      }),
     ).resolves.toBe(user);
     expect(getMe.execute).toHaveBeenCalledWith('user-1');
   });

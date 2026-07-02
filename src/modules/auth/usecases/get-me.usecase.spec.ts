@@ -1,4 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
+import { UserRole } from '../../../shared/enums/user-role.enum';
 import { User } from '../entities/user.entity';
 import { UserRepository } from '../repositories/user.repository';
 import { GetMeUseCase } from './get-me.usecase';
@@ -24,6 +25,7 @@ describe('GetMeUseCase', () => {
         name: 'Ana Souza',
         email: 'ana@semantia.app',
         passwordHash: 'hashed',
+        role: UserRole.PROFESSOR,
         createdAt: new Date(),
         updatedAt: new Date(),
       }),
@@ -37,6 +39,7 @@ describe('GetMeUseCase', () => {
       id: 'user-1',
       name: 'Ana Souza',
       email: 'ana@semantia.app',
+      role: UserRole.PROFESSOR,
     });
   });
 

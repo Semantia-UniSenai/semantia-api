@@ -15,6 +15,11 @@ export class GetMeUseCase {
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    return { id: user.id, name: user.name, email: user.email };
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    };
   }
 }

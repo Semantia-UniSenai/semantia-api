@@ -1,6 +1,7 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
+import { UserRole } from '../../../shared/enums/user-role.enum';
 import { User } from '../entities/user.entity';
 import { UserRepository } from '../repositories/user.repository';
 import { SignInUseCase } from './sign-in.usecase';
@@ -23,6 +24,7 @@ describe('SignInUseCase', () => {
       name: 'Ana Souza',
       email: 'ana@semantia.app',
       passwordHash,
+      role: UserRole.PROFESSOR,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -48,12 +50,18 @@ describe('SignInUseCase', () => {
       password,
     });
 
-    // Assert
+    // Assert — the JWT payload and the response both carry the role
     expect(result.accessToken).toBe('signed.jwt.token');
+    expect(jwt.signAsync).toHaveBeenCalledWith({
+      sub: 'user-1',
+      email: 'ana@semantia.app',
+      role: UserRole.PROFESSOR,
+    });
     expect(result.user).toEqual({
       id: 'user-1',
       name: 'Ana Souza',
       email: 'ana@semantia.app',
+      role: UserRole.PROFESSOR,
     });
   });
 

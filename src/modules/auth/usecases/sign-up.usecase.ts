@@ -1,6 +1,7 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
+import { UserRole } from '../../../shared/enums/user-role.enum';
 import { AuthResponseDto } from '../dtos/auth-response.dto';
 import { SignUpDto } from '../dtos/sign-up.dto';
 import { UserRepository } from '../repositories/user.repository';
@@ -28,16 +29,23 @@ export class SignUpUseCase {
       name: dto.name,
       email: dto.email,
       passwordHash,
+      role: dto.role ?? UserRole.ALUNO,
     });
 
     const accessToken = await this.jwt.signAsync({
       sub: user.id,
       email: user.email,
+      role: user.role,
     });
 
     return {
       accessToken,
-      user: { id: user.id, name: user.name, email: user.email },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
     };
   }
 }
