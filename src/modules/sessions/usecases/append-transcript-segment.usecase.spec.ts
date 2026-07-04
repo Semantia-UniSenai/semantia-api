@@ -48,6 +48,38 @@ describe('AppendTranscriptSegmentUseCase', () => {
     expect(result).toBe(segment);
   });
 
+  it('strips disfluencies before persisting', async () => {
+    sessions.findById.mockResolvedValue(buildSession());
+    const segment = new TranscriptSegment({
+      id: 't1',
+      sessionId: 'session-1',
+      seq: 1,
+      text: 'hoje vamos falar de frações',
+      createdAt: new Date(),
+    });
+    transcripts.append.mockResolvedValue(segment);
+
+    await useCase.execute(
+      'teacher-1',
+      'session-1',
+      'hoje né vamos vamos falar de frações',
+    );
+
+    expect(transcripts.append).toHaveBeenCalledWith(
+      'session-1',
+      'hoje vamos falar de frações',
+    );
+  });
+
+  it('returns null (and persists nothing) when the sentence was pure noise', async () => {
+    sessions.findById.mockResolvedValue(buildSession());
+
+    const result = await useCase.execute('teacher-1', 'session-1', 'né?');
+
+    expect(result).toBeNull();
+    expect(transcripts.append).not.toHaveBeenCalled();
+  });
+
   it('rejects anyone who is not the owning teacher', async () => {
     sessions.findById.mockResolvedValue(buildSession());
 

@@ -464,6 +464,17 @@ describe('LiveGateway', () => {
       });
       expect(serverEmit).not.toHaveBeenCalled();
     });
+
+    it('acks ok without broadcasting when the sentence was pure noise (usecase → null)', async () => {
+      const { socket } = buildSocket();
+      joinRoom(socket, teacher);
+      appendTranscriptSegment.execute.mockResolvedValue(null);
+
+      const ack = await gateway.onTranscriptFinal(socket, { text: 'né?' });
+
+      expect(ack).toEqual({ ok: true, seq: null });
+      expect(serverEmit).not.toHaveBeenCalled();
+    });
   });
 
   describe('hand:raise', () => {

@@ -240,16 +240,22 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   async onTranscriptFinal(
     socket: LiveSocket,
     body: { text?: string },
-  ): Promise<Ack<{ seq: number }>> {
+  ): Promise<Ack<{ seq: number | null }>> {
     try {
       const { user, sessionId } = this.requireParticipant(socket);
 
-      // Usecase re-validates ownership + LIVE status against the database.
+      // Usecase re-validates ownership + LIVE status against the database,
+      // and strips disfluencies before persisting.
       const segment = await this.appendTranscriptSegment.execute(
         user.userId,
         sessionId,
         body?.text ?? '',
       );
+
+      // Frase que era 100% ruído ("né?"): nada persistido, nada emitido.
+      if (!segment) {
+        return { ok: true, seq: null };
+      }
 
       this.server.to(roomOf(sessionId)).emit('transcript:final', {
         seq: segment.seq,
