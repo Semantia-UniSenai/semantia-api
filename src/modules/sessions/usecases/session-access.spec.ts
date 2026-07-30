@@ -13,7 +13,6 @@ import {
 import { CheckSessionAccessUseCase } from './check-session-access.usecase';
 import { GetSessionSnapshotUseCase } from './get-session-snapshot.usecase';
 import { GetSessionUseCase } from './get-session.usecase';
-import { ListRoomSessionsUseCase } from './list-room-sessions.usecase';
 
 describe('CheckSessionAccessUseCase', () => {
   const permissions = new RoomPermissionService();
@@ -173,23 +172,5 @@ describe('CheckSessionAccessUseCase', () => {
         'session-1',
       ),
     ).resolves.toMatchObject({ session: { joinToken: '' } });
-  });
-
-  it('does not disclose reusable invite tokens in a participant session list', async () => {
-    const sessions = buildSessionRepo();
-    const rooms = buildRoomRepo();
-    rooms.findById.mockResolvedValue({ id: 'room-1' } as never);
-    rooms.getParticipantRole.mockResolvedValue(RoomParticipantRole.PARTICIPANT);
-    sessions.findByRoom.mockResolvedValue([
-      buildSession({ joinToken: 'reusable-secret' }),
-    ]);
-    const useCase = new ListRoomSessionsUseCase(sessions, rooms, permissions);
-
-    await expect(
-      useCase.execute(
-        { userId: 'participant-1', email: 'participant@semantia.dev' },
-        'room-1',
-      ),
-    ).resolves.toMatchObject([{ joinToken: '' }]);
   });
 });

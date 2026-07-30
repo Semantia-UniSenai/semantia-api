@@ -39,7 +39,6 @@ import { EndSessionUseCase } from './usecases/end-session.usecase';
 import { GetSessionUseCase } from './usecases/get-session.usecase';
 import { GetTranscriptUseCase } from './usecases/get-transcript.usecase';
 import { ResolveJoinTokenUseCase } from './usecases/resolve-join-token.usecase';
-import { StartSessionUseCase } from './usecases/start-session.usecase';
 
 const principalOf = (actor?: AuthUser) =>
   actor ? { participantId: actor.userId, kind: 'account' as const } : null;
@@ -48,7 +47,6 @@ const principalOf = (actor?: AuthUser) =>
 @Controller('sessions')
 export class SessionsController {
   constructor(
-    private readonly startSession: StartSessionUseCase,
     private readonly endSession: EndSessionUseCase,
     private readonly getSession: GetSessionUseCase,
     private readonly resolveJoinToken: ResolveJoinTokenUseCase,
@@ -76,22 +74,6 @@ export class SessionsController {
   @ApiResponse({ status: 200, type: GuestAccessDto })
   guest(@Body() dto: CreateGuestAccessDto): Promise<GuestAccessDto> {
     return this.createGuestAccess.execute(dto.joinToken, dto.displayName);
-  }
-
-  @Post(':id/start')
-  @HttpCode(200)
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({
-    operationId: 'startSession',
-    summary: 'Start a prepared session',
-  })
-  @ApiResponse({ status: 200, type: SessionDto })
-  start(
-    @CurrentUser() actor: AuthUser,
-    @Param('id') sessionId: string,
-  ): Promise<RoomSession> {
-    return this.startSession.execute(actor.userId, sessionId);
   }
 
   @Post(':id/end')

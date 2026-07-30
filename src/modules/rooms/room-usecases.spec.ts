@@ -2,8 +2,9 @@ import { ForbiddenException } from '@nestjs/common';
 import { Room } from './entities/room.entity';
 import { RoomParticipantRole } from './entities/room.entity';
 import { RoomPermissionService } from './room-permission.service';
+import { InstantMeetingRepository } from './repositories/instant-meeting.repository';
 import { RoomRepository } from './repositories/room.repository';
-import { CreateRoomUseCase } from './usecases/create-room.usecase';
+import { CreateInstantMeetingUseCase } from './usecases/create-instant-meeting.usecase';
 import { RemoveRoomMemberUseCase } from './usecases/remove-room-member.usecase';
 import { UpdateRoomMemberRoleUseCase } from './usecases/update-room-member-role.usecase';
 import { UpdateRoomUseCase } from './usecases/update-room.usecase';
@@ -31,21 +32,56 @@ const repo = (): jest.Mocked<RoomRepository> => ({
   removeMember: jest.fn(),
 });
 
+const instantMeetingRepo = (): jest.Mocked<InstantMeetingRepository> => ({
+  create: jest.fn(),
+});
+
 describe('room use cases', () => {
   const permissions = new RoomPermissionService();
 
-  it('creates a room for any authenticated account without a global role', async () => {
-    const rooms = repo();
-    rooms.create.mockResolvedValue(room);
-    const result = await new CreateRoomUseCase(rooms).execute(actor, {
-      name: ' Planejamento ',
-    });
-    expect(result).toBe(room);
-    expect(rooms.create).toHaveBeenCalledWith({
+  it('creates an instant meeting already live with an invitation token', async () => {
+    const meetings = instantMeetingRepo();
+    const instantMeeting = {
+      roomId: room.id,
+      meetingId: 'meeting-1',
+      name: room.name,
+      joinToken: 'join-token',
+      status: 'LIVE' as const,
+      startedAt: new Date(),
+    };
+    meetings.create.mockResolvedValue(instantMeeting);
+
+    const result = await new CreateInstantMeetingUseCase(meetings).execute(
+      actor,
+      { name: ' Planejamento ' },
+    );
+
+    expect(result).toBe(instantMeeting);
+    expect(meetings.create).toHaveBeenCalledWith({
       name: 'Planejamento',
       hostId: actor.userId,
       inviteCode: expect.any(String),
+      joinToken: expect.any(String),
+      startedAt: expect.any(Date),
     });
+  });
+
+  it('does not require a title before opening an instant meeting', async () => {
+    const meetings = instantMeetingRepo();
+    meetings.create.mockResolvedValue({
+      roomId: room.id,
+      meetingId: 'meeting-1',
+      name: 'Reunião instantânea',
+      joinToken: 'join-token',
+      status: 'LIVE',
+      startedAt: new Date(),
+    });
+
+    await new CreateInstantMeetingUseCase(meetings).execute(actor, {});
+
+    expect(meetings.create).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Reunião instantânea' }),
+    );
   });
 
   it.each([RoomParticipantRole.HOST, RoomParticipantRole.MODERATOR])(

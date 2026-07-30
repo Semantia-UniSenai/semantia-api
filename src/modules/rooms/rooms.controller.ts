@@ -23,13 +23,15 @@ import {
   UpdateRoomMemberRoleDto,
 } from './dtos/room-membership.dto';
 import {
+  InstantMeetingDto,
   RoomDetailsDto,
   RoomDto,
   RoomSummaryDto,
 } from './dtos/room-response.dto';
 import { CreateRoomDto, UpdateRoomDto } from './dtos/room-write.dto';
+import { InstantMeeting } from './entities/instant-meeting.entity';
 import { Room, RoomDetails, RoomSummary } from './entities/room.entity';
-import { CreateRoomUseCase } from './usecases/create-room.usecase';
+import { CreateInstantMeetingUseCase } from './usecases/create-instant-meeting.usecase';
 import { GetRoomUseCase } from './usecases/get-room.usecase';
 import { JoinRoomUseCase } from './usecases/join-room.usecase';
 import { ListRoomsUseCase } from './usecases/list-rooms.usecase';
@@ -43,7 +45,7 @@ import { UpdateRoomUseCase } from './usecases/update-room.usecase';
 @Controller('rooms')
 export class RoomsController {
   constructor(
-    private readonly createRoom: CreateRoomUseCase,
+    private readonly createMeeting: CreateInstantMeetingUseCase,
     private readonly listRooms: ListRoomsUseCase,
     private readonly getRoom: GetRoomUseCase,
     private readonly joinRoom: JoinRoomUseCase,
@@ -54,15 +56,15 @@ export class RoomsController {
 
   @Post()
   @ApiOperation({
-    operationId: 'createRoom',
-    summary: 'Create a communication room',
+    operationId: 'createMeeting',
+    summary: 'Create an instant meeting already live with an invitation token',
   })
-  @ApiResponse({ status: 201, type: RoomDto })
+  @ApiResponse({ status: 201, type: InstantMeetingDto })
   create(
     @CurrentUser() actor: AuthUser,
     @Body() dto: CreateRoomDto,
-  ): Promise<Room> {
-    return this.createRoom.execute(actor, dto);
+  ): Promise<InstantMeeting> {
+    return this.createMeeting.execute(actor, dto);
   }
 
   @Get()

@@ -5,6 +5,7 @@ import {
   Room,
   RoomMemberInfo,
   RoomParticipantRole,
+  RoomSessionStatus,
   RoomSummary,
 } from '../entities/room.entity';
 import { CreateRoomData, RoomRepository } from './room.repository';
@@ -47,13 +48,23 @@ export class PrismaRoomRepository extends RoomRepository {
           where: { userId },
           select: { role: true },
         },
+        sessions: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+            startedAt: true,
+            endedAt: true,
+          },
+        },
         _count: { select: { members: true } },
       },
       orderBy: { updatedAt: 'desc' },
     });
 
     return rows.map(
-      ({ host, members, _count, ...row }) =>
+      ({ host, members, sessions, _count, ...row }) =>
         new RoomSummary({
           ...row,
           hostName: host.name,
@@ -62,6 +73,11 @@ export class PrismaRoomRepository extends RoomRepository {
             row.hostId === userId
               ? RoomParticipantRole.HOST
               : memberRole(members[0].role),
+          meetingId: sessions[0]?.id ?? null,
+          meetingStatus:
+            (sessions[0]?.status as RoomSessionStatus | undefined) ?? null,
+          startedAt: sessions[0]?.startedAt ?? null,
+          endedAt: sessions[0]?.endedAt ?? null,
         }),
     );
   }

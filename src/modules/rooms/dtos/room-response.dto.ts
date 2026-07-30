@@ -1,5 +1,28 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { RoomParticipantRole } from '../entities/room.entity';
+import {
+  RoomParticipantRole,
+  RoomSessionStatus,
+} from '../entities/room.entity';
+
+export class InstantMeetingDto {
+  @ApiProperty({ format: 'uuid' })
+  roomId: string;
+
+  @ApiProperty({ format: 'uuid' })
+  meetingId: string;
+
+  @ApiProperty({ example: 'Reunião instantânea' })
+  name: string;
+
+  @ApiProperty({ description: 'Opaque invitation token for this meeting' })
+  joinToken: string;
+
+  @ApiProperty({ enum: [RoomSessionStatus.LIVE] })
+  status: RoomSessionStatus.LIVE;
+
+  @ApiProperty()
+  startedAt: Date;
+}
 
 export class RoomDto {
   @ApiProperty({ format: 'uuid' })
@@ -30,6 +53,22 @@ export class RoomSummaryDto extends RoomDto {
 
   @ApiProperty({ enum: RoomParticipantRole, enumName: 'RoomParticipantRole' })
   currentUserRole: RoomParticipantRole;
+
+  @ApiProperty({ nullable: true, format: 'uuid' })
+  meetingId: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    enum: RoomSessionStatus,
+    enumName: 'MeetingStatus',
+  })
+  meetingStatus: RoomSessionStatus | null;
+
+  @ApiProperty({ nullable: true })
+  startedAt: Date | null;
+
+  @ApiProperty({ nullable: true })
+  endedAt: Date | null;
 }
 
 export class RoomMemberDto {

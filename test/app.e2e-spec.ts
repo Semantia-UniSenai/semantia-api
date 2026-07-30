@@ -89,7 +89,7 @@ describe('generic communication rooms (e2e)', () => {
     if (app) await app.close();
   });
 
-  it('creates, configures, starts, joins, leaves and ends a room without educational roles', async () => {
+  it('opens an instant meeting, invites a guest and ends it without exposing preparation', async () => {
     const unique = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const hostSignup = await request(baseUrl)
       .post('/v1/auth/signup')
@@ -102,77 +102,64 @@ describe('generic communication rooms (e2e)', () => {
     expect(hostSignup.body.user).not.toHaveProperty('role');
     const hostToken = hostSignup.body.accessToken as string;
 
-    const participantSignup = await request(baseUrl)
-      .post('/v1/auth/signup')
-      .send({
-        name: 'Paulo Participante',
-        email: `participant-${unique}@semantia.app`,
-        password: 'sup3rsecret',
-      })
-      .expect(201);
-    const participantToken = participantSignup.body.accessToken as string;
-
-    const roomResponse = await request(baseUrl)
+    const meetingResponse = await request(baseUrl)
       .post('/v1/rooms')
       .set('Authorization', `Bearer ${hostToken}`)
-      .send({ name: 'Planejamento acessível' })
+      .send({})
       .expect(201);
-    const room = roomResponse.body as Json;
-    expect(room).toMatchObject({
-      name: 'Planejamento acessível',
-      hostId: hostSignup.body.user.id,
+    const meeting = meetingResponse.body as Json;
+    expect(meeting).toMatchObject({
+      roomId: expect.any(String),
+      meetingId: expect.any(String),
+      name: 'Reunião instantânea',
+      joinToken: expect.any(String),
+      status: 'LIVE',
+      startedAt: expect.any(String),
     });
 
     await request(baseUrl)
-      .patch(`/v1/rooms/${room.id}`)
+      .get('/v1/rooms')
       .set('Authorization', `Bearer ${hostToken}`)
-      .send({ name: 'Encontro acessível' })
       .expect(200)
-      .expect(({ body }) => expect(body.name).toBe('Encontro acessível'));
+      .expect(({ body }) =>
+        expect(body).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: meeting.roomId,
+              meetingId: meeting.meetingId,
+              meetingStatus: 'LIVE',
+            }),
+          ]),
+        ),
+      );
 
     await request(baseUrl)
-      .post('/v1/rooms/join')
-      .set('Authorization', `Bearer ${participantToken}`)
-      .send({ inviteCode: room.inviteCode })
-      .expect(200);
-
-    const preparedResponse = await request(baseUrl)
-      .post(`/v1/rooms/${room.id}/sessions`)
+      .post(`/v1/rooms/${meeting.roomId}/sessions`)
       .set('Authorization', `Bearer ${hostToken}`)
-      .send({ title: 'Comunicação em tempo real' })
-      .expect(201);
-    const prepared = preparedResponse.body as Json;
-    expect(prepared.status).toBe('PREPARING');
+      .send({ title: 'Outra ocorrência' })
+      .expect(404);
 
     await request(baseUrl)
-      .get(`/v1/sessions/${prepared.id}`)
-      .set('Authorization', `Bearer ${participantToken}`)
-      .expect(403);
-
-    const startedResponse = await request(baseUrl)
-      .post(`/v1/sessions/${prepared.id}/start`)
+      .post(`/v1/sessions/${meeting.meetingId}/start`)
       .set('Authorization', `Bearer ${hostToken}`)
-      .expect(200);
-    const started = startedResponse.body as Json;
-    expect(started.status).toBe('LIVE');
-    expect(started.startedAt).toBeTruthy();
+      .expect(404);
 
     await request(baseUrl)
       .get('/v1/sessions/resolve')
-      .query({ token: started.joinToken })
+      .query({ token: meeting.joinToken })
       .expect(200)
       .expect(({ body }) =>
         expect(body).toMatchObject({
-          sessionId: started.id,
-          roomId: room.id,
-          roomName: 'Encontro acessível',
+          sessionId: meeting.meetingId,
+          roomId: meeting.roomId,
+          roomName: 'Reunião instantânea',
           status: 'LIVE',
         }),
       );
 
     const guestAccess = await request(baseUrl)
       .post('/v1/sessions/guest-access')
-      .send({ joinToken: started.joinToken, displayName: 'Bruno Convidado' })
+      .send({ joinToken: meeting.joinToken, displayName: 'Bruno Convidado' })
       .expect(200);
     expect(guestAccess.body.participant).toMatchObject({
       name: 'Bruno Convidado',
@@ -182,7 +169,9 @@ describe('generic communication rooms (e2e)', () => {
     hostSocket = await connect(baseUrl, hostToken);
     const hostState = waitFor<Json>(hostSocket, 'session:state');
     expect(
-      await emitAck(hostSocket, 'session:join', { sessionId: started.id }),
+      await emitAck(hostSocket, 'session:join', {
+        sessionId: meeting.meetingId,
+      }),
     ).toEqual({ ok: true });
     expect(await hostState).toMatchObject({
       canManage: true,
@@ -195,7 +184,9 @@ describe('generic communication rooms (e2e)', () => {
     );
     const guestState = waitFor<Json>(guestSocket, 'session:state');
     expect(
-      await emitAck(guestSocket, 'session:join', { sessionId: started.id }),
+      await emitAck(guestSocket, 'session:join', {
+        sessionId: meeting.meetingId,
+      }),
     ).toEqual({ ok: true });
     expect(await guestState).toMatchObject({
       canManage: false,
@@ -236,7 +227,7 @@ describe('generic communication rooms (e2e)', () => {
 
     const endedEvent = waitFor<Json>(hostSocket, 'session:ended');
     expect(await emitAck(hostSocket, 'session:end')).toEqual({ ok: true });
-    expect(await endedEvent).toMatchObject({ sessionId: started.id });
+    expect(await endedEvent).toMatchObject({ sessionId: meeting.meetingId });
 
     guestSocket = await connect(
       baseUrl,
@@ -244,7 +235,9 @@ describe('generic communication rooms (e2e)', () => {
     );
     const endedGuestState = waitFor<Json>(guestSocket, 'session:state');
     expect(
-      await emitAck(guestSocket, 'session:join', { sessionId: started.id }),
+      await emitAck(guestSocket, 'session:join', {
+        sessionId: meeting.meetingId,
+      }),
     ).toEqual({ ok: true });
     expect(await endedGuestState).toMatchObject({
       session: { status: 'ENDED', joinToken: '' },
@@ -260,13 +253,13 @@ describe('generic communication rooms (e2e)', () => {
     guestSocket = undefined;
 
     await request(baseUrl)
-      .get(`/v1/sessions/${started.id}`)
+      .get(`/v1/sessions/${meeting.meetingId}`)
       .set('Authorization', `Bearer ${hostToken}`)
       .expect(200)
       .expect(({ body }) => expect(body.status).toBe('ENDED'));
 
     await request(baseUrl)
-      .get(`/v1/sessions/${started.id}/transcript`)
+      .get(`/v1/sessions/${meeting.meetingId}/transcript`)
       .set('Authorization', `Bearer ${hostToken}`)
       .expect(200)
       .expect(({ body }) =>
@@ -276,8 +269,8 @@ describe('generic communication rooms (e2e)', () => {
       );
 
     await request(baseUrl)
-      .get(`/v1/sessions/${started.id}`)
-      .query({ token: started.joinToken })
+      .get(`/v1/sessions/${meeting.meetingId}`)
+      .query({ token: meeting.joinToken })
       .expect(403);
   });
 });
