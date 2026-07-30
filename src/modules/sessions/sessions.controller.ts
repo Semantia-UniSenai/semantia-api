@@ -4,7 +4,6 @@ import {
   Get,
   HttpCode,
   Param,
-  ParseUUIDPipe,
   Post,
   Query,
   UseGuards,
@@ -16,12 +15,10 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../../shared/decorators/current-user.decorator';
-import { Roles } from '../../shared/decorators/roles.decorator';
-import { UserRole } from '../../shared/enums/user-role.enum';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import type { AuthUser } from '../../shared/guards/jwt-auth.guard';
-import { RolesGuard } from '../../shared/guards/roles.guard';
-import { CreateSessionDto } from './dtos/create-session.dto';
+import { OptionalJwtAuthGuard } from '../../shared/guards/optional-jwt-auth.guard';
+import { CreateGuestAccessDto, GuestAccessDto } from './dtos/guest-access.dto';
 import {
   ResolvedSessionDto,
   SessionDetailDto,
@@ -33,105 +30,117 @@ import {
   SessionTokenQueryDto,
 } from './dtos/session-token-query.dto';
 import {
-  LiveSession,
-  LiveSessionDetails,
+  RoomSession,
+  RoomSessionDetails,
 } from './entities/live-session.entity';
 import { TranscriptSegment } from './entities/transcript-segment.entity';
-import { CreateSessionUseCase } from './usecases/create-session.usecase';
+import { CreateGuestAccessUseCase } from './usecases/create-guest-access.usecase';
 import { EndSessionUseCase } from './usecases/end-session.usecase';
 import { GetSessionUseCase } from './usecases/get-session.usecase';
 import { GetTranscriptUseCase } from './usecases/get-transcript.usecase';
 import { ResolveJoinTokenUseCase } from './usecases/resolve-join-token.usecase';
+import { StartSessionUseCase } from './usecases/start-session.usecase';
+
+const principalOf = (actor?: AuthUser) =>
+  actor ? { participantId: actor.userId, kind: 'account' as const } : null;
 
 @ApiTags('sessions')
-@ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('sessions')
 export class SessionsController {
   constructor(
-    private readonly createSessionUseCase: CreateSessionUseCase,
-    private readonly endSessionUseCase: EndSessionUseCase,
-    private readonly getSessionUseCase: GetSessionUseCase,
-    private readonly resolveJoinTokenUseCase: ResolveJoinTokenUseCase,
-    private readonly getTranscriptUseCase: GetTranscriptUseCase,
+    private readonly startSession: StartSessionUseCase,
+    private readonly endSession: EndSessionUseCase,
+    private readonly getSession: GetSessionUseCase,
+    private readonly resolveJoinToken: ResolveJoinTokenUseCase,
+    private readonly createGuestAccess: CreateGuestAccessUseCase,
+    private readonly getTranscript: GetTranscriptUseCase,
   ) {}
-
-  @Post()
-  @Roles(UserRole.PROFESSOR)
-  @ApiOperation({
-    operationId: 'createSession',
-    summary: 'Start a live session (teacher only)',
-  })
-  @ApiResponse({ status: 201, type: SessionDto })
-  @ApiResponse({ status: 403, description: 'Not a teacher / not your class' })
-  @ApiResponse({ status: 404, description: 'Class not found' })
-  createSession(
-    @CurrentUser() user: AuthUser,
-    @Body() dto: CreateSessionDto,
-  ): Promise<LiveSession> {
-    return this.createSessionUseCase.execute(user, dto);
-  }
 
   @Get('resolve')
   @ApiOperation({
     operationId: 'resolveSessionToken',
-    summary: 'Resolve a join token from a shared link into a session pointer',
+    summary: 'Resolve an active invitation token',
   })
   @ApiResponse({ status: 200, type: ResolvedSessionDto })
-  @ApiResponse({ status: 404, description: 'Invalid session token' })
-  resolveToken(
-    @Query() query: ResolveTokenQueryDto,
-  ): Promise<ResolvedSessionDto> {
-    return this.resolveJoinTokenUseCase.execute(query.token);
+  resolve(@Query() query: ResolveTokenQueryDto): Promise<ResolvedSessionDto> {
+    return this.resolveJoinToken.execute(query.token);
+  }
+
+  @Post('guest-access')
+  @HttpCode(200)
+  @ApiOperation({
+    operationId: 'createGuestAccess',
+    summary:
+      'Exchange an invite token and display name for an ephemeral identity',
+  })
+  @ApiResponse({ status: 200, type: GuestAccessDto })
+  guest(@Body() dto: CreateGuestAccessDto): Promise<GuestAccessDto> {
+    return this.createGuestAccess.execute(dto.joinToken, dto.displayName);
+  }
+
+  @Post(':id/start')
+  @HttpCode(200)
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    operationId: 'startSession',
+    summary: 'Start a prepared session',
+  })
+  @ApiResponse({ status: 200, type: SessionDto })
+  start(
+    @CurrentUser() actor: AuthUser,
+    @Param('id') sessionId: string,
+  ): Promise<RoomSession> {
+    return this.startSession.execute(actor.userId, sessionId);
   }
 
   @Post(':id/end')
   @HttpCode(200)
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({
     operationId: 'endSession',
-    summary: 'End a live session (owning teacher only, idempotent)',
+    summary: 'End a session idempotently',
   })
   @ApiResponse({ status: 200, type: SessionDto })
-  @ApiResponse({ status: 403, description: 'Caller is not the owning teacher' })
-  @ApiResponse({ status: 404, description: 'Session not found' })
-  endSession(
-    @CurrentUser() user: AuthUser,
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<LiveSession> {
-    return this.endSessionUseCase.execute(user.userId, id);
+  end(
+    @CurrentUser() actor: AuthUser,
+    @Param('id') sessionId: string,
+  ): Promise<RoomSession> {
+    return this.endSession.execute(actor.userId, sessionId);
   }
 
   @Get(':id')
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({
     operationId: 'getSession',
-    summary:
-      'Session info. Accessible to the owner, class members, or with ?token=<joinToken>',
+    summary: 'Read session details with membership or an active invite token',
   })
   @ApiResponse({ status: 200, type: SessionDetailDto })
-  @ApiResponse({ status: 403, description: 'No access to this session' })
-  @ApiResponse({ status: 404, description: 'Session not found' })
-  getSession(
-    @CurrentUser() user: AuthUser,
-    @Param('id', ParseUUIDPipe) id: string,
+  details(
+    @CurrentUser() actor: AuthUser | undefined,
+    @Param('id') sessionId: string,
     @Query() query: SessionTokenQueryDto,
-  ): Promise<LiveSessionDetails> {
-    return this.getSessionUseCase.execute(user.userId, id, query.token);
+  ): Promise<RoomSessionDetails> {
+    return this.getSession.execute(principalOf(actor), sessionId, query.token);
   }
 
   @Get(':id/transcript')
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({
     operationId: 'getSessionTranscript',
-    summary:
-      'Full transcript ordered by seq (works after the session ended, same access rule)',
+    summary: 'Read the ordered transcript under the same session access rule',
   })
   @ApiResponse({ status: 200, type: [TranscriptSegmentDto] })
-  @ApiResponse({ status: 403, description: 'No access to this session' })
-  @ApiResponse({ status: 404, description: 'Session not found' })
-  getTranscript(
-    @CurrentUser() user: AuthUser,
-    @Param('id', ParseUUIDPipe) id: string,
+  transcript(
+    @CurrentUser() actor: AuthUser | undefined,
+    @Param('id') sessionId: string,
     @Query() query: SessionTokenQueryDto,
   ): Promise<TranscriptSegment[]> {
-    return this.getTranscriptUseCase.execute(user.userId, id, query.token);
+    return this.getTranscript.execute(
+      principalOf(actor),
+      sessionId,
+      query.token,
+    );
   }
 }

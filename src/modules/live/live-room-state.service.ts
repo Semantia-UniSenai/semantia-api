@@ -1,39 +1,21 @@
 import { Injectable } from '@nestjs/common';
-import { UserRole } from '../../shared/enums/user-role.enum';
+import { RoomParticipantRole } from '../rooms/entities/room.entity';
 import { SessionStatus } from '../sessions/entities/live-session.entity';
 
-/** A user present in a session room (deduped across tabs/sockets). */
 export interface LiveParticipant {
-  userId: string;
+  participantId: string;
   name: string;
-  role: UserRole;
+  role: RoomParticipantRole;
 }
 
-/** A raised hand, ordered by when it went up. */
 export interface RaisedHand {
-  userId: string;
+  participantId: string;
   name: string;
   at: Date;
 }
 
-/** Cached session facts the gateway checks without hitting the database. */
 export interface SessionMeta {
-  teacherId: string;
   status: SessionStatus;
-}
-
-export interface JoinResult {
-  /** True when this user was not yet present (first socket). */
-  firstJoin: boolean;
-}
-
-export interface LeaveResult {
-  sessionId: string;
-  participant: LiveParticipant;
-  /** True when the user has no sockets left in the room. */
-  lastSocket: boolean;
-  /** True when the (fully departed) user had a raised hand. */
-  hadRaisedHand: boolean;
 }
 
 interface ParticipantEntry {
@@ -43,27 +25,16 @@ interface ParticipantEntry {
 
 interface RoomState {
   meta: SessionMeta;
-  /** userId -> entry. */
   participants: Map<string, ParticipantEntry>;
-  /** userId -> hand; Map preserves raise order. */
   raisedHands: Map<string, RaisedHand>;
 }
 
-/**
- * LiveRoomStateService — in-memory presence/hand state for live rooms.
- *
- * MVP trade-off: state lives in this single process (fine for one Render
- * instance). Reconnections and multiple tabs are handled by keying
- * participants by userId and tracking every socket they own — a user only
- * "joins"/"leaves" when their first socket arrives / last socket departs.
- */
 @Injectable()
 export class LiveRoomStateService {
   private readonly rooms = new Map<string, RoomState>();
-  /** socketId -> where that socket lives, for O(1) disconnect handling. */
   private readonly socketIndex = new Map<
     string,
-    { sessionId: string; userId: string }
+    { sessionId: string; participantId: string }
   >();
 
   join(
@@ -71,7 +42,7 @@ export class LiveRoomStateService {
     participant: LiveParticipant,
     socketId: string,
     meta: SessionMeta,
-  ): JoinResult {
+  ): { firstJoin: boolean } {
     let room = this.rooms.get(sessionId);
     if (!room) {
       room = { meta, participants: new Map(), raisedHands: new Map() };
@@ -79,43 +50,42 @@ export class LiveRoomStateService {
     } else {
       room.meta = meta;
     }
-
-    let entry = room.participants.get(participant.userId);
+    let entry = room.participants.get(participant.participantId);
     const firstJoin = !entry;
     if (!entry) {
       entry = { participant, socketIds: new Set() };
-      room.participants.set(participant.userId, entry);
+      room.participants.set(participant.participantId, entry);
     } else {
-      entry.participant = participant; // refresh name/role on reconnect
+      entry.participant = participant;
     }
     entry.socketIds.add(socketId);
-    this.socketIndex.set(socketId, { sessionId, userId: participant.userId });
-
+    this.socketIndex.set(socketId, {
+      sessionId,
+      participantId: participant.participantId,
+    });
     return { firstJoin };
   }
 
-  /** Removes one socket (leave or disconnect). Null if it was in no room. */
-  removeSocket(socketId: string): LeaveResult | null {
+  removeSocket(socketId: string): {
+    sessionId: string;
+    participant: LiveParticipant;
+    lastSocket: boolean;
+    hadRaisedHand: boolean;
+  } | null {
     const location = this.socketIndex.get(socketId);
     if (!location) return null;
     this.socketIndex.delete(socketId);
-
     const room = this.rooms.get(location.sessionId);
-    const entry = room?.participants.get(location.userId);
+    const entry = room?.participants.get(location.participantId);
     if (!room || !entry) return null;
-
     entry.socketIds.delete(socketId);
     const lastSocket = entry.socketIds.size === 0;
     let hadRaisedHand = false;
-
     if (lastSocket) {
-      room.participants.delete(location.userId);
-      hadRaisedHand = room.raisedHands.delete(location.userId);
-      if (room.participants.size === 0) {
-        this.rooms.delete(location.sessionId);
-      }
+      room.participants.delete(location.participantId);
+      hadRaisedHand = room.raisedHands.delete(location.participantId);
+      if (room.participants.size === 0) this.rooms.delete(location.sessionId);
     }
-
     return {
       sessionId: location.sessionId,
       participant: entry.participant,
@@ -135,49 +105,46 @@ export class LiveRoomStateService {
 
   getParticipant(
     sessionId: string,
-    userId: string,
+    participantId: string,
   ): LiveParticipant | undefined {
-    return this.rooms.get(sessionId)?.participants.get(userId)?.participant;
+    return this.rooms.get(sessionId)?.participants.get(participantId)
+      ?.participant;
   }
 
   getParticipants(sessionId: string): LiveParticipant[] {
     const room = this.rooms.get(sessionId);
-    if (!room) return [];
-    return [...room.participants.values()].map((e) => e.participant);
+    return room
+      ? [...room.participants.values()].map((entry) => entry.participant)
+      : [];
   }
 
-  /** Raises a hand. Null when not a participant or already raised (no-op). */
-  raiseHand(sessionId: string, userId: string): RaisedHand | null {
+  raiseHand(sessionId: string, participantId: string): RaisedHand | null {
     const room = this.rooms.get(sessionId);
-    const entry = room?.participants.get(userId);
-    if (!room || !entry) return null;
-    if (room.raisedHands.has(userId)) return null;
-
-    const hand: RaisedHand = {
-      userId,
+    const entry = room?.participants.get(participantId);
+    if (!room || !entry || room.raisedHands.has(participantId)) return null;
+    const hand = {
+      participantId,
       name: entry.participant.name,
       at: new Date(),
     };
-    room.raisedHands.set(userId, hand);
+    room.raisedHands.set(participantId, hand);
     return hand;
   }
 
-  /** Lowers a hand. False when it was not raised (no-op). */
-  lowerHand(sessionId: string, userId: string): boolean {
-    return this.rooms.get(sessionId)?.raisedHands.delete(userId) ?? false;
+  lowerHand(sessionId: string, participantId: string): boolean {
+    return (
+      this.rooms.get(sessionId)?.raisedHands.delete(participantId) ?? false
+    );
   }
 
-  /** Raised hands in the order they went up. */
   getRaisedHands(sessionId: string): RaisedHand[] {
     const room = this.rooms.get(sessionId);
     return room ? [...room.raisedHands.values()] : [];
   }
 
-  /** Drops all room state (session ended). Returns the affected socket ids. */
   closeSession(sessionId: string): string[] {
     const room = this.rooms.get(sessionId);
     if (!room) return [];
-
     const socketIds: string[] = [];
     for (const entry of room.participants.values()) {
       for (const socketId of entry.socketIds) {

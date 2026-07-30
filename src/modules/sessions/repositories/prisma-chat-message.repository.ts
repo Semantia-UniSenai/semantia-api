@@ -1,54 +1,41 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
-import { UserRole } from '../../../shared/enums/user-role.enum';
-import { ChatMessageWithAuthor } from '../entities/chat-message.entity';
+import { RoomParticipantRole } from '../../rooms/entities/room.entity';
+import { ChatMessage } from '../entities/chat-message.entity';
 import {
   ChatMessageRepository,
   CreateChatMessageData,
 } from './chat-message.repository';
 
-type MessageRow = {
+const toEntity = (row: {
   id: string;
   sessionId: string;
-  userId: string;
+  participantId: string;
+  participantName: string;
+  participantRole: string;
   text: string;
   createdAt: Date;
-  user: { name: string; role: string };
-};
-
-const toEntity = (row: MessageRow): ChatMessageWithAuthor => {
-  const { user, ...message } = row;
-  return new ChatMessageWithAuthor({
-    ...message,
-    name: user.name,
-    role: user.role as UserRole,
+}): ChatMessage =>
+  new ChatMessage({
+    ...row,
+    participantRole: row.participantRole as RoomParticipantRole,
   });
-};
 
-/** Prisma-backed ChatMessageRepository. */
 @Injectable()
 export class PrismaChatMessageRepository extends ChatMessageRepository {
   constructor(private readonly prisma: PrismaService) {
     super();
   }
 
-  async create(data: CreateChatMessageData): Promise<ChatMessageWithAuthor> {
-    const row = await this.prisma.chatMessage.create({
-      data,
-      include: { user: { select: { name: true, role: true } } },
-    });
-    return toEntity(row);
+  async create(data: CreateChatMessageData): Promise<ChatMessage> {
+    return toEntity(await this.prisma.chatMessage.create({ data }));
   }
 
-  async findLast(
-    sessionId: string,
-    limit: number,
-  ): Promise<ChatMessageWithAuthor[]> {
+  async findLast(sessionId: string, limit: number): Promise<ChatMessage[]> {
     const rows = await this.prisma.chatMessage.findMany({
       where: { sessionId },
       orderBy: { createdAt: 'desc' },
       take: limit,
-      include: { user: { select: { name: true, role: true } } },
     });
     return rows.reverse().map(toEntity);
   }

@@ -42,6 +42,7 @@ const REPEATED_WORD_REGEX = /(?<!\p{L})(\p{L}+)(?:\s+\1(?!\p{L}))+/giu;
 // Pontuação órfã deixada pela remoção: " ," → ",", ",," → ",".
 const ORPHAN_SPACE_REGEX = /\s+([.,!?;:])/g;
 const DOUBLED_PUNCT_REGEX = /([.,!?;:])(?:\s*[,;:])+/g;
+const LEADING_ORPHAN_PUNCT_REGEX = /^[,!?;:]+\s*/;
 
 /**
  * Remove vícios e repetições de `text`. Pode devolver string vazia quando a
@@ -53,6 +54,7 @@ export function stripDisfluencies(text: string): string {
     .replace(REPEATED_WORD_REGEX, '$1')
     .replace(ORPHAN_SPACE_REGEX, '$1')
     .replace(DOUBLED_PUNCT_REGEX, '$1')
+    .replace(LEADING_ORPHAN_PUNCT_REGEX, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
 

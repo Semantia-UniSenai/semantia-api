@@ -1,26 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import { TranscriptSegment } from '../entities/transcript-segment.entity';
 import { TranscriptRepository } from '../repositories/transcript.repository';
-import { CheckSessionAccessUseCase } from './check-session-access.usecase';
+import {
+  CheckSessionAccessUseCase,
+  SessionPrincipal,
+} from './check-session-access.usecase';
 
-/**
- * GetTranscript — full transcript ordered by seq. Same access rule as the
- * session itself, and it works after the session ended so students can
- * re-read the whole lesson.
- */
 @Injectable()
 export class GetTranscriptUseCase {
   constructor(
-    private readonly transcripts: TranscriptRepository,
     private readonly checkAccess: CheckSessionAccessUseCase,
+    private readonly transcripts: TranscriptRepository,
   ) {}
 
   async execute(
-    userId: string,
+    principal: SessionPrincipal | null,
     sessionId: string,
     token?: string,
   ): Promise<TranscriptSegment[]> {
-    await this.checkAccess.execute(userId, sessionId, token);
+    await this.checkAccess.execute(principal, sessionId, token);
     return this.transcripts.findBySession(sessionId);
   }
 }

@@ -29,7 +29,7 @@ async function bootstrap() {
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Semantia API')
     .setDescription(
-      'LIBRAS learning app — auth + gated games (fingerspelling).',
+      'Accessible real-time communication rooms with live transcription.',
     )
     .setVersion('1.0.0')
     .addBearerAuth()

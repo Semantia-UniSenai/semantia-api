@@ -6,13 +6,14 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
-import { UserRole } from '../enums/user-role.enum';
 
-/** Shape of the authenticated principal attached to the request. */
 export interface AuthUser {
   userId: string;
   email: string;
-  role: UserRole;
+}
+
+export interface OptionalAuthRequest extends Request {
+  user?: AuthUser;
 }
 
 declare module 'express' {
@@ -21,11 +22,6 @@ declare module 'express' {
   }
 }
 
-/**
- * JwtAuthGuard — verifies the `Authorization: Bearer <token>` header,
- * decodes it with the configured JWT secret, and attaches `{ userId, email }`
- * to the request for downstream `@CurrentUser()` extraction.
- */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(private readonly jwtService: JwtService) {}
@@ -33,23 +29,18 @@ export class JwtAuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
     const token = this.extractToken(request);
-
-    if (!token) {
-      throw new UnauthorizedException('Missing bearer token');
-    }
+    if (!token) throw new UnauthorizedException('Missing bearer token');
 
     try {
       const payload = await this.jwtService.verifyAsync<{
         sub: string;
         email: string;
-        role?: UserRole;
+        kind?: string;
       }>(token);
-      request.user = {
-        userId: payload.sub,
-        email: payload.email,
-        // Tokens minted before roles existed carry no role — treat as ALUNO.
-        role: payload.role ?? UserRole.ALUNO,
-      };
+      if (payload.kind && payload.kind !== 'account') {
+        throw new Error('wrong token kind');
+      }
+      request.user = { userId: payload.sub, email: payload.email };
       return true;
     } catch {
       throw new UnauthorizedException('Invalid or expired token');
@@ -57,9 +48,7 @@ export class JwtAuthGuard implements CanActivate {
   }
 
   private extractToken(request: Request): string | undefined {
-    const header = request.headers.authorization;
-    if (!header) return undefined;
-    const [type, value] = header.split(' ');
+    const [type, value] = request.headers.authorization?.split(' ') ?? [];
     return type === 'Bearer' ? value : undefined;
   }
 }

@@ -2,74 +2,72 @@ import { ApiProperty } from '@nestjs/swagger';
 import { SessionStatus } from '../entities/live-session.entity';
 
 export class SessionDto {
-  @ApiProperty({ example: 's3a1f0a2-1d2e-4a5b-8c9d-0e1f2a3b4c5d' })
+  @ApiProperty({ format: 'uuid' })
   id: string;
 
-  @ApiProperty({ example: 'Aula 12 — Lógica de Programação' })
+  @ApiProperty({ example: 'Reunião semanal' })
   title: string;
 
-  @ApiProperty({ example: 'b3c1f0a2-1d2e-4a5b-8c9d-0e1f2a3b4c5d' })
-  teacherId: string;
+  @ApiProperty({ format: 'uuid' })
+  roomId: string;
 
-  @ApiProperty({ nullable: true, example: null })
-  classId: string | null;
-
-  @ApiProperty({
-    example: 'Xk3nP9qLmT7vB2cD',
-    description: 'Opaque token that grants access via link (?token=...)',
-  })
+  @ApiProperty({ description: 'Opaque capability token for this session' })
   joinToken: string;
 
-  @ApiProperty({
-    enum: SessionStatus,
-    enumName: 'SessionStatus',
-    example: SessionStatus.LIVE,
-  })
+  @ApiProperty({ enum: SessionStatus, enumName: 'SessionStatus' })
   status: SessionStatus;
 
-  @ApiProperty({ example: '2026-07-01T12:00:00.000Z' })
-  startedAt: Date;
+  @ApiProperty()
+  createdAt: Date;
 
-  @ApiProperty({ nullable: true, example: null })
+  @ApiProperty({ nullable: true })
+  startedAt: Date | null;
+
+  @ApiProperty({ nullable: true })
   endedAt: Date | null;
 }
 
 export class SessionDetailDto extends SessionDto {
-  @ApiProperty({ example: 'Carlos Lima' })
-  teacherName: string;
+  @ApiProperty({ example: 'Planejamento da equipe' })
+  roomName: string;
 
-  @ApiProperty({ nullable: true, example: 'Turma A — Informática 2026' })
-  className: string | null;
+  @ApiProperty({ format: 'uuid' })
+  hostId: string;
+
+  @ApiProperty({ example: 'Ana Souza' })
+  hostName: string;
 }
 
 export class ResolvedSessionDto {
-  @ApiProperty({ example: 's3a1f0a2-1d2e-4a5b-8c9d-0e1f2a3b4c5d' })
+  @ApiProperty()
   sessionId: string;
 
-  @ApiProperty({ example: 'Aula 12 — Lógica de Programação' })
+  @ApiProperty()
+  roomId: string;
+
+  @ApiProperty({ example: 'Reunião semanal' })
   title: string;
 
-  @ApiProperty({
-    enum: SessionStatus,
-    enumName: 'SessionStatus',
-    example: SessionStatus.LIVE,
-  })
+  @ApiProperty({ example: 'Planejamento da equipe' })
+  roomName: string;
+
+  @ApiProperty({ enum: SessionStatus, enumName: 'SessionStatus' })
   status: SessionStatus;
 }
 
 export class TranscriptSegmentDto {
-  @ApiProperty({ example: 't3a1f0a2-1d2e-4a5b-8c9d-0e1f2a3b4c5d' })
+  @ApiProperty({ format: 'uuid' })
   id: string;
 
-  @ApiProperty({ example: 's3a1f0a2-1d2e-4a5b-8c9d-0e1f2a3b4c5d' })
+  @ApiProperty({ format: 'uuid' })
   sessionId: string;
 
-  @ApiProperty({ example: 3, description: 'Monotonic order within a session' })
+  @ApiProperty({ example: 3 })
   seq: number;
 
-  @ApiProperty({ example: 'Hoje vamos falar sobre estruturas de repetição.' })
+  @ApiProperty({ example: 'Vamos revisar as próximas entregas.' })
   text: string;
 
-  @ApiProperty({ example: '2026-07-01T12:00:00.000Z' })
+  @ApiProperty()
   createdAt: Date;
 }

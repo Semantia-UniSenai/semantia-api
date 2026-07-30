@@ -3,53 +3,84 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ClassRepository } from '../../classes/repositories/class.repository';
-import { LiveSession } from '../entities/live-session.entity';
-import { LiveSessionRepository } from '../repositories/live-session.repository';
+import { RoomParticipantRole } from '../../rooms/entities/room.entity';
+import { RoomPermissionService } from '../../rooms/room-permission.service';
+import { RoomRepository } from '../../rooms/repositories/room.repository';
+import { RoomSession, SessionStatus } from '../entities/live-session.entity';
+import { RoomSessionRepository } from '../repositories/live-session.repository';
 
-export interface SessionAccess {
-  session: LiveSession;
-  /** True when the caller is the teacher who owns the session. */
-  isOwner: boolean;
+export interface SessionPrincipal {
+  participantId: string;
+  kind: 'account' | 'guest';
+  sessionId?: string;
 }
 
-/**
- * CheckSessionAccess — THE single "can this user enter this session?" rule,
- * shared by the REST endpoints and the Socket.IO gateway. Access is granted
- * to: the owning teacher, a member of the session's class, or anyone
- * presenting the session's joinToken. Works for ENDED sessions too (read-only
- * transcript replay).
- */
+export interface SessionAccess {
+  session: RoomSession;
+  role: RoomParticipantRole;
+  canManage: boolean;
+}
+
 @Injectable()
 export class CheckSessionAccessUseCase {
   constructor(
-    private readonly sessions: LiveSessionRepository,
-    private readonly classes: ClassRepository,
+    private readonly sessions: RoomSessionRepository,
+    private readonly rooms: RoomRepository,
+    private readonly permissions: RoomPermissionService,
   ) {}
 
   async execute(
-    userId: string,
+    principal: SessionPrincipal | null,
     sessionId: string,
     token?: string,
   ): Promise<SessionAccess> {
     const session = await this.sessions.findById(sessionId);
-    if (!session) {
-      throw new NotFoundException('Session not found');
-    }
+    if (!session) throw new NotFoundException('Session not found');
 
-    if (session.teacherId === userId) {
-      return { session, isOwner: true };
-    }
-
-    if (token && token === session.joinToken) {
-      return { session, isOwner: false };
+    if (principal?.kind === 'account') {
+      const role = await this.rooms.getParticipantRole(
+        session.roomId,
+        principal.participantId,
+      );
+      if (role) {
+        const canManage = this.permissions.canManage(role);
+        if (session.status === SessionStatus.PREPARING && !canManage) {
+          throw new ForbiddenException('Session is still being prepared');
+        }
+        return {
+          session,
+          role,
+          canManage,
+        };
+      }
     }
 
     if (
-      session.classId &&
-      (await this.classes.isMember(session.classId, userId))
+      (session.status === SessionStatus.LIVE ||
+        session.status === SessionStatus.ENDED) &&
+      principal?.kind === 'guest' &&
+      principal.sessionId === session.id
     ) {
-      return { session, isOwner: false };
+      return {
+        session,
+        role: RoomParticipantRole.GUEST,
+        canManage: false,
+      };
+    }
+
+    if (
+      session.status === SessionStatus.LIVE &&
+      token &&
+      token === session.joinToken
+    ) {
+      return {
+        session,
+        role:
+          principal?.kind === 'account'
+            ? RoomParticipantRole.PARTICIPANT
+            : RoomParticipantRole.GUEST,
+        canManage: false,
+      };
     }
 
     throw new ForbiddenException('You do not have access to this session');
