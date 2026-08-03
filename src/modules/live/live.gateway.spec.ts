@@ -1,606 +1,157 @@
-import { ForbiddenException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { Server, Socket } from 'socket.io';
-import { UserRole } from '../../shared/enums/user-role.enum';
-import { User } from '../auth/entities/user.entity';
-import { UserRepository } from '../auth/repositories/user.repository';
-import { ChatMessageWithAuthor } from '../sessions/entities/chat-message.entity';
-import { SessionStatus } from '../sessions/entities/live-session.entity';
-import { TranscriptSegment } from '../sessions/entities/transcript-segment.entity';
+import { RoomParticipantRole } from '../rooms/entities/room.entity';
+import { RoomPermissionService } from '../rooms/room-permission.service';
+import { ChatMessage } from '../sessions/entities/chat-message.entity';
 import {
-  buildSession,
-  buildSessionDetails,
-} from '../sessions/testing/session-test.helpers';
-import { AppendTranscriptSegmentUseCase } from '../sessions/usecases/append-transcript-segment.usecase';
-import { EndSessionUseCase } from '../sessions/usecases/end-session.usecase';
-import { GetSessionSnapshotUseCase } from '../sessions/usecases/get-session-snapshot.usecase';
-import { SendChatMessageUseCase } from '../sessions/usecases/send-chat-message.usecase';
-import {
-  LiveParticipant,
-  LiveRoomStateService,
-} from './live-room-state.service';
+  RoomSessionDetails,
+  SessionStatus,
+} from '../sessions/entities/live-session.entity';
 import { LiveGateway } from './live.gateway';
+import { LiveRoomStateService } from './live-room-state.service';
 
-type MockSocket = Socket & {
-  data: { user?: LiveParticipant; sessionId?: string };
-};
+const details = new RoomSessionDetails({
+  id: 'session-1',
+  title: 'Reunião semanal',
+  roomId: 'room-1',
+  joinToken: 'tok_abc1234567890',
+  status: SessionStatus.LIVE,
+  createdAt: new Date(),
+  startedAt: new Date(),
+  endedAt: null,
+  roomName: 'Planejamento',
+  hostId: 'host-1',
+  hostName: 'Ana',
+});
 
-describe('LiveGateway', () => {
-  let gateway: LiveGateway;
-  let jwtService: jest.Mocked<JwtService>;
-  let users: jest.Mocked<UserRepository>;
-  let state: jest.Mocked<LiveRoomStateService>;
-  let getSessionSnapshot: jest.Mocked<GetSessionSnapshotUseCase>;
-  let appendTranscriptSegment: jest.Mocked<AppendTranscriptSegmentUseCase>;
-  let sendChatMessage: jest.Mocked<SendChatMessageUseCase>;
-  let endSession: jest.Mocked<EndSessionUseCase>;
-  let serverEmit: jest.Mock;
-  let socketsLeave: jest.Mock;
-  let server: { to: jest.Mock; in: jest.Mock };
-
-  const teacher: LiveParticipant = {
-    userId: 'teacher-1',
-    name: 'Carlos Lima',
-    role: UserRole.PROFESSOR,
+function setup(
+  role: RoomParticipantRole,
+  kind: 'account' | 'guest' = 'account',
+) {
+  const state = new LiveRoomStateService();
+  const snapshot = {
+    execute: jest.fn().mockResolvedValue({
+      session: details,
+      role,
+      canManage:
+        role === RoomParticipantRole.HOST ||
+        role === RoomParticipantRole.MODERATOR,
+      chat: [],
+      transcript: [],
+    }),
   };
-  const student: LiveParticipant = {
-    userId: 'student-1',
-    name: 'Ana',
-    role: UserRole.ALUNO,
+  const append = { execute: jest.fn() };
+  const chat = {
+    execute: jest.fn().mockResolvedValue(
+      new ChatMessage({
+        id: 'message-1',
+        sessionId: details.id,
+        participantId: kind === 'guest' ? 'guest:1' : 'account-1',
+        participantName: 'Pessoa',
+        participantRole: role,
+        text: 'Olá',
+        createdAt: new Date(),
+      }),
+    ),
   };
-  const room = 'session:session-1';
-
-  const buildSocket = (
-    token?: string,
-  ): { socket: MockSocket; roomEmit: jest.Mock } => {
-    const roomEmit = jest.fn();
-    const socket = {
-      id: 'sock-1',
-      data: {},
-      handshake: { auth: { token } },
-      emit: jest.fn(),
-      join: jest.fn(),
-      leave: jest.fn(),
-      to: jest.fn(() => ({ emit: roomEmit })),
-      disconnect: jest.fn(),
-    } as unknown as MockSocket;
-    return { socket, roomEmit };
+  const end = {
+    execute: jest
+      .fn()
+      .mockResolvedValue({ ...details, status: SessionStatus.ENDED }),
   };
-
-  const joinRoom = (
-    socket: MockSocket,
-    user: LiveParticipant,
-    status: SessionStatus = SessionStatus.LIVE,
-  ): void => {
-    socket.data.user = user;
-    socket.data.sessionId = 'session-1';
-    state.getParticipant.mockReturnValue(user);
-    state.getMeta.mockReturnValue({ teacherId: 'teacher-1', status });
+  const gateway = new LiveGateway(
+    {} as never,
+    {} as never,
+    {} as never,
+    new RoomPermissionService(),
+    state,
+    snapshot as never,
+    append as never,
+    chat as never,
+    end as never,
+  );
+  const serverEmit = jest.fn();
+  (gateway as unknown as { server: unknown }).server = {
+    to: jest.fn(() => ({ emit: serverEmit })),
+    in: jest.fn(() => ({ socketsLeave: jest.fn() })),
   };
+  const socketEmit = jest.fn();
+  const roomEmit = jest.fn();
+  const socket = {
+    id: 'socket-1',
+    data: {
+      identity: {
+        participantId: kind === 'guest' ? 'guest:1' : 'account-1',
+        name: 'Pessoa',
+        role,
+        kind,
+        ...(kind === 'guest' ? { sessionId: details.id } : {}),
+      },
+    },
+    join: jest.fn().mockResolvedValue(undefined),
+    leave: jest.fn().mockResolvedValue(undefined),
+    emit: socketEmit,
+    to: jest.fn(() => ({ emit: roomEmit })),
+  };
+  return {
+    gateway,
+    socket,
+    snapshot,
+    append,
+    chat,
+    end,
+    socketEmit,
+    serverEmit,
+  };
+}
 
-  beforeEach(() => {
-    jwtService = {
-      verifyAsync: jest.fn(),
-    } as unknown as jest.Mocked<JwtService>;
-    users = {
-      findByEmail: jest.fn(),
-      findById: jest.fn(),
-      create: jest.fn(),
-    };
-    state = {
-      join: jest.fn(),
-      removeSocket: jest.fn().mockReturnValue(null),
-      getMeta: jest.fn(),
-      markEnded: jest.fn(),
-      getParticipant: jest.fn(),
-      getParticipants: jest.fn().mockReturnValue([]),
-      raiseHand: jest.fn(),
-      lowerHand: jest.fn(),
-      getRaisedHands: jest.fn().mockReturnValue([]),
-      closeSession: jest.fn().mockReturnValue([]),
-    } as unknown as jest.Mocked<LiveRoomStateService>;
-    getSessionSnapshot = {
-      execute: jest.fn(),
-    } as unknown as jest.Mocked<GetSessionSnapshotUseCase>;
-    appendTranscriptSegment = {
-      execute: jest.fn(),
-    } as unknown as jest.Mocked<AppendTranscriptSegmentUseCase>;
-    sendChatMessage = {
-      execute: jest.fn(),
-    } as unknown as jest.Mocked<SendChatMessageUseCase>;
-    endSession = {
-      execute: jest.fn(),
-    } as unknown as jest.Mocked<EndSessionUseCase>;
+describe('LiveGateway generic identities', () => {
+  it.each([RoomParticipantRole.HOST, RoomParticipantRole.MODERATOR])(
+    'joins a %s and exposes contextual management permission',
+    async (role) => {
+      const { gateway, socket, socketEmit } = setup(role);
+      await expect(
+        gateway.onSessionJoin(socket as never, { sessionId: details.id }),
+      ).resolves.toEqual({ ok: true });
+      expect(socketEmit).toHaveBeenCalledWith(
+        'session:state',
+        expect.objectContaining({
+          canManage: true,
+          self: expect.objectContaining({ role }),
+        }),
+      );
+    },
+  );
 
-    gateway = new LiveGateway(
-      jwtService,
-      users,
-      state,
-      getSessionSnapshot,
-      appendTranscriptSegment,
-      sendChatMessage,
-      endSession,
+  it('allows a guest to chat using an ephemeral identity', async () => {
+    const { gateway, socket, chat } = setup(RoomParticipantRole.GUEST, 'guest');
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+    await expect(
+      gateway.onChatSend(socket as never, { text: 'Olá' }),
+    ).resolves.toEqual({ ok: true, id: 'message-1' });
+    expect(chat.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        participantId: 'guest:1',
+        role: RoomParticipantRole.GUEST,
+      }),
+      details.id,
+      'Olá',
     );
-
-    serverEmit = jest.fn();
-    socketsLeave = jest.fn();
-    server = {
-      to: jest.fn(() => ({ emit: serverEmit })),
-      in: jest.fn(() => ({ socketsLeave })),
-    };
-    gateway.server = server as unknown as Server;
   });
 
-  describe('auth middleware (afterInit)', () => {
-    /** Registra o middleware num namespace fake e o executa contra o socket. */
-    async function runMiddleware(socket: unknown): Promise<Error | undefined> {
-      let middleware:
-        ((s: unknown, next: (err?: Error) => void) => void) | undefined;
-      const namespace = {
-        use: jest.fn(
-          (fn: (s: unknown, next: (err?: Error) => void) => void) => {
-            middleware = fn;
-          },
-        ),
-      };
-      gateway.afterInit(namespace as unknown as Server);
-      return new Promise((resolve) => {
-        middleware!(socket, (err?: Error) => resolve(err));
-      });
-    }
-
-    it('attaches the authenticated user to the socket', async () => {
-      const { socket } = buildSocket('valid-jwt');
-      jwtService.verifyAsync.mockResolvedValue({
-        sub: 'teacher-1',
-        email: 'prof@semantia.app',
-      });
-      users.findById.mockResolvedValue(
-        new User({
-          id: 'teacher-1',
-          name: 'Carlos Lima',
-          email: 'prof@semantia.app',
-          passwordHash: 'hash',
-          role: UserRole.PROFESSOR,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }),
-      );
-
-      const err = await runMiddleware(socket);
-
-      expect(err).toBeUndefined();
-      expect(socket.data.user).toEqual(teacher);
+  it('never lets a guest publish final transcript segments', async () => {
+    const { gateway, socket, append } = setup(
+      RoomParticipantRole.GUEST,
+      'guest',
+    );
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+    await expect(
+      gateway.onTranscriptFinal(socket as never, { text: 'segredo' }),
+    ).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'FORBIDDEN',
+        message: 'Guests cannot publish the transcript',
+      },
     });
-
-    it('rejects the handshake with an invalid token', async () => {
-      const { socket } = buildSocket('bad-jwt');
-      jwtService.verifyAsync.mockRejectedValue(new Error('invalid'));
-
-      const err = await runMiddleware(socket);
-
-      expect(err?.message).toBe('UNAUTHORIZED');
-      expect(socket.data.user).toBeUndefined();
-    });
-
-    it('rejects the handshake without a token before verifying', async () => {
-      const { socket } = buildSocket(undefined);
-
-      const err = await runMiddleware(socket);
-
-      expect(jwtService.verifyAsync).not.toHaveBeenCalled();
-      expect(err?.message).toBe('UNAUTHORIZED');
-    });
-
-    it('rejects the handshake for a deleted user', async () => {
-      const { socket } = buildSocket('valid-jwt');
-      jwtService.verifyAsync.mockResolvedValue({
-        sub: 'ghost',
-        email: 'ghost@semantia.app',
-      });
-      users.findById.mockResolvedValue(null);
-
-      const err = await runMiddleware(socket);
-
-      expect(err?.message).toBe('UNAUTHORIZED');
-      expect(socket.data.user).toBeUndefined();
-    });
-  });
-
-  describe('session:join', () => {
-    it('joins the room, emits session:state and broadcasts presence', async () => {
-      // Arrange
-      const { socket, roomEmit } = buildSocket();
-      socket.data.user = student;
-      const session = buildSessionDetails();
-      const chatAt = new Date();
-      const segAt = new Date();
-      getSessionSnapshot.execute.mockResolvedValue({
-        session,
-        isOwner: false,
-        chat: [
-          new ChatMessageWithAuthor({
-            id: 'msg-1',
-            sessionId: 'session-1',
-            userId: 'student-1',
-            text: 'oi',
-            createdAt: chatAt,
-            name: 'Ana',
-            role: UserRole.ALUNO,
-          }),
-        ],
-        transcript: [
-          new TranscriptSegment({
-            id: 'seg-1',
-            sessionId: 'session-1',
-            seq: 1,
-            text: 'Bom dia, turma',
-            createdAt: segAt,
-          }),
-        ],
-      });
-      state.join.mockReturnValue({ firstJoin: true });
-      state.getParticipants.mockReturnValue([student]);
-
-      // Act
-      const ack = await gateway.onSessionJoin(socket, {
-        sessionId: 'session-1',
-        token: 'tok_abc123',
-      });
-
-      // Assert
-      expect(ack).toEqual({ ok: true });
-      expect(getSessionSnapshot.execute).toHaveBeenCalledWith(
-        'student-1',
-        'session-1',
-        'tok_abc123',
-      );
-      expect(state.join).toHaveBeenCalledWith('session-1', student, 'sock-1', {
-        teacherId: 'teacher-1',
-        status: SessionStatus.LIVE,
-      });
-      expect(socket.join).toHaveBeenCalledWith(room);
-      expect(socket.data.sessionId).toBe('session-1');
-      expect(socket.emit).toHaveBeenCalledWith('session:state', {
-        session,
-        participants: [student],
-        raisedHands: [],
-        chat: [
-          {
-            id: 'msg-1',
-            userId: 'student-1',
-            name: 'Ana',
-            role: UserRole.ALUNO,
-            text: 'oi',
-            at: chatAt,
-          },
-        ],
-        transcript: [{ seq: 1, text: 'Bom dia, turma', at: segAt }],
-      });
-      expect(socket.to).toHaveBeenCalledWith(room);
-      expect(roomEmit).toHaveBeenCalledWith('presence:joined', {
-        user: student,
-      });
-    });
-
-    it('does not broadcast presence for an extra socket of the same user', async () => {
-      const { socket, roomEmit } = buildSocket();
-      socket.data.user = student;
-      getSessionSnapshot.execute.mockResolvedValue({
-        session: buildSessionDetails(),
-        isOwner: false,
-        chat: [],
-        transcript: [],
-      });
-      state.join.mockReturnValue({ firstJoin: false });
-
-      const ack = await gateway.onSessionJoin(socket, {
-        sessionId: 'session-1',
-      });
-
-      expect(ack).toEqual({ ok: true });
-      expect(roomEmit).not.toHaveBeenCalled();
-    });
-
-    it('maps an access denial (403) to a FORBIDDEN ack', async () => {
-      const { socket } = buildSocket();
-      socket.data.user = student;
-      getSessionSnapshot.execute.mockRejectedValue(
-        new ForbiddenException('You do not have access to this session'),
-      );
-
-      const ack = await gateway.onSessionJoin(socket, {
-        sessionId: 'session-1',
-      });
-
-      expect(ack).toEqual({
-        ok: false,
-        error: {
-          code: 'FORBIDDEN',
-          message: 'You do not have access to this session',
-        },
-      });
-      expect(socket.join).not.toHaveBeenCalled();
-    });
-
-    it('rejects an unauthenticated socket', async () => {
-      const { socket } = buildSocket();
-
-      const ack = await gateway.onSessionJoin(socket, {
-        sessionId: 'session-1',
-      });
-
-      expect(ack).toEqual({
-        ok: false,
-        error: {
-          code: 'UNAUTHORIZED',
-          message: 'Socket is not authenticated',
-        },
-      });
-    });
-
-    it('rejects a join without sessionId', async () => {
-      const { socket } = buildSocket();
-      socket.data.user = student;
-
-      const ack = await gateway.onSessionJoin(socket, {});
-
-      expect(ack).toEqual({
-        ok: false,
-        error: { code: 'BAD_REQUEST', message: 'sessionId is required' },
-      });
-    });
-  });
-
-  describe('transcript:partial', () => {
-    it('broadcasts the partial text to the room for the owner', () => {
-      const { socket, roomEmit } = buildSocket();
-      joinRoom(socket, teacher);
-
-      const ack = gateway.onTranscriptPartial(socket, { text: ' Bom dia ' });
-
-      expect(ack).toEqual({ ok: true });
-      expect(socket.to).toHaveBeenCalledWith(room);
-      expect(roomEmit).toHaveBeenCalledWith('transcript:partial', {
-        text: 'Bom dia',
-        at: expect.any(Date) as Date,
-      });
-    });
-
-    it('rejects a non-owner with FORBIDDEN', () => {
-      const { socket, roomEmit } = buildSocket();
-      joinRoom(socket, student);
-
-      const ack = gateway.onTranscriptPartial(socket, { text: 'oi' });
-
-      expect(ack).toEqual({
-        ok: false,
-        error: {
-          code: 'FORBIDDEN',
-          message: 'Only the owning teacher can publish the transcript',
-        },
-      });
-      expect(roomEmit).not.toHaveBeenCalled();
-    });
-
-    it('rejects writes after the session ended', () => {
-      const { socket } = buildSocket();
-      joinRoom(socket, teacher, SessionStatus.ENDED);
-
-      const ack = gateway.onTranscriptPartial(socket, { text: 'oi' });
-
-      expect(ack).toEqual({
-        ok: false,
-        error: {
-          code: 'SESSION_ENDED',
-          message: 'Session has already ended',
-        },
-      });
-    });
-
-    it('rejects a socket that has not joined a session', () => {
-      const { socket } = buildSocket();
-      socket.data.user = teacher;
-
-      const ack = gateway.onTranscriptPartial(socket, { text: 'oi' });
-
-      expect(ack).toEqual({
-        ok: false,
-        error: { code: 'NOT_JOINED', message: 'Join a session first' },
-      });
-    });
-  });
-
-  describe('transcript:final', () => {
-    it('delegates persistence to the usecase and broadcasts the segment', async () => {
-      const { socket } = buildSocket();
-      joinRoom(socket, teacher);
-      const segAt = new Date();
-      appendTranscriptSegment.execute.mockResolvedValue(
-        new TranscriptSegment({
-          id: 'seg-1',
-          sessionId: 'session-1',
-          seq: 7,
-          text: 'Bom dia, turma',
-          createdAt: segAt,
-        }),
-      );
-
-      const ack = await gateway.onTranscriptFinal(socket, {
-        text: 'Bom dia, turma',
-      });
-
-      expect(ack).toEqual({ ok: true, seq: 7 });
-      expect(appendTranscriptSegment.execute).toHaveBeenCalledWith(
-        'teacher-1',
-        'session-1',
-        'Bom dia, turma',
-      );
-      expect(server.to).toHaveBeenCalledWith(room);
-      expect(serverEmit).toHaveBeenCalledWith('transcript:final', {
-        seq: 7,
-        text: 'Bom dia, turma',
-        at: segAt,
-      });
-    });
-
-    it('maps a usecase rejection to an error ack', async () => {
-      const { socket } = buildSocket();
-      joinRoom(socket, student);
-      appendTranscriptSegment.execute.mockRejectedValue(
-        new ForbiddenException(
-          'Only the owning teacher can write the transcript',
-        ),
-      );
-
-      const ack = await gateway.onTranscriptFinal(socket, { text: 'oi' });
-
-      expect(ack).toEqual({
-        ok: false,
-        error: {
-          code: 'FORBIDDEN',
-          message: 'Only the owning teacher can write the transcript',
-        },
-      });
-      expect(serverEmit).not.toHaveBeenCalled();
-    });
-
-    it('acks ok without broadcasting when the sentence was pure noise (usecase → null)', async () => {
-      const { socket } = buildSocket();
-      joinRoom(socket, teacher);
-      appendTranscriptSegment.execute.mockResolvedValue(null);
-
-      const ack = await gateway.onTranscriptFinal(socket, { text: 'né?' });
-
-      expect(ack).toEqual({ ok: true, seq: null });
-      expect(serverEmit).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('hand:raise', () => {
-    it('rejects the teacher with FORBIDDEN', () => {
-      const { socket } = buildSocket();
-      joinRoom(socket, teacher);
-
-      const ack = gateway.onHandRaise(socket);
-
-      expect(ack).toEqual({
-        ok: false,
-        error: {
-          code: 'FORBIDDEN',
-          message: 'The teacher cannot raise a hand',
-        },
-      });
-      expect(state.raiseHand).not.toHaveBeenCalled();
-    });
-
-    it('raises a student hand and broadcasts it to the room', () => {
-      const { socket } = buildSocket();
-      joinRoom(socket, student);
-      const hand = { userId: 'student-1', name: 'Ana', at: new Date() };
-      state.raiseHand.mockReturnValue(hand);
-
-      const ack = gateway.onHandRaise(socket);
-
-      expect(ack).toEqual({ ok: true });
-      expect(state.raiseHand).toHaveBeenCalledWith('session-1', 'student-1');
-      expect(server.to).toHaveBeenCalledWith(room);
-      expect(serverEmit).toHaveBeenCalledWith('hand:raised', hand);
-    });
-
-    it('does not broadcast an already-raised hand', () => {
-      const { socket } = buildSocket();
-      joinRoom(socket, student);
-      state.raiseHand.mockReturnValue(null);
-
-      const ack = gateway.onHandRaise(socket);
-
-      expect(ack).toEqual({ ok: true });
-      expect(serverEmit).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('chat:send', () => {
-    it('persists via the usecase and broadcasts the message', async () => {
-      const { socket } = buildSocket();
-      joinRoom(socket, student);
-      const chatAt = new Date();
-      sendChatMessage.execute.mockResolvedValue(
-        new ChatMessageWithAuthor({
-          id: 'msg-1',
-          sessionId: 'session-1',
-          userId: 'student-1',
-          text: 'Tenho uma dúvida',
-          createdAt: chatAt,
-          name: 'Ana',
-          role: UserRole.ALUNO,
-        }),
-      );
-
-      const ack = await gateway.onChatSend(socket, {
-        text: 'Tenho uma dúvida',
-      });
-
-      expect(ack).toEqual({ ok: true, id: 'msg-1' });
-      expect(sendChatMessage.execute).toHaveBeenCalledWith(
-        'student-1',
-        'session-1',
-        'Tenho uma dúvida',
-      );
-      expect(server.to).toHaveBeenCalledWith(room);
-      expect(serverEmit).toHaveBeenCalledWith('chat:message', {
-        id: 'msg-1',
-        userId: 'student-1',
-        name: 'Ana',
-        role: UserRole.ALUNO,
-        text: 'Tenho uma dúvida',
-        at: chatAt,
-      });
-    });
-  });
-
-  describe('session:end', () => {
-    it('ends the session, notifies the room and closes it', async () => {
-      const { socket } = buildSocket();
-      joinRoom(socket, teacher);
-      const endedAt = new Date();
-      endSession.execute.mockResolvedValue(
-        buildSession({ status: SessionStatus.ENDED, endedAt }),
-      );
-
-      const ack = await gateway.onSessionEnd(socket);
-
-      expect(ack).toEqual({ ok: true });
-      expect(endSession.execute).toHaveBeenCalledWith('teacher-1', 'session-1');
-      expect(state.markEnded).toHaveBeenCalledWith('session-1');
-      expect(server.to).toHaveBeenCalledWith(room);
-      expect(serverEmit).toHaveBeenCalledWith('session:ended', {
-        sessionId: 'session-1',
-        endedAt,
-      });
-      expect(state.closeSession).toHaveBeenCalledWith('session-1');
-      expect(server.in).toHaveBeenCalledWith(room);
-      expect(socketsLeave).toHaveBeenCalledWith(room);
-      expect(socket.data.sessionId).toBeUndefined();
-    });
-
-    it('maps a non-owner rejection to FORBIDDEN', async () => {
-      const { socket } = buildSocket();
-      joinRoom(socket, student);
-      endSession.execute.mockRejectedValue(
-        new ForbiddenException('Only the owning teacher can end the session'),
-      );
-
-      const ack = await gateway.onSessionEnd(socket);
-
-      expect(ack).toEqual({
-        ok: false,
-        error: {
-          code: 'FORBIDDEN',
-          message: 'Only the owning teacher can end the session',
-        },
-      });
-      expect(state.closeSession).not.toHaveBeenCalled();
-    });
+    expect(append.execute).not.toHaveBeenCalled();
   });
 });

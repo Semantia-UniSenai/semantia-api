@@ -1,83 +1,91 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import {
-  LiveSession,
-  LiveSessionDetails,
+  RoomSession,
+  RoomSessionDetails,
   SessionStatus,
 } from '../entities/live-session.entity';
 import {
-  CreateLiveSessionData,
-  LiveSessionRepository,
+  CreateRoomSessionData,
+  RoomSessionRepository,
 } from './live-session.repository';
 
 type SessionRow = {
   id: string;
   title: string;
-  teacherId: string;
-  classId: string | null;
+  roomId: string;
   joinToken: string;
   status: string;
-  startedAt: Date;
+  createdAt: Date;
+  startedAt: Date | null;
   endedAt: Date | null;
 };
 
-const toEntity = (row: SessionRow): LiveSession =>
-  new LiveSession({ ...row, status: row.status as SessionStatus });
+const toEntity = (row: SessionRow): RoomSession =>
+  new RoomSession({ ...row, status: row.status as SessionStatus });
 
-/** Prisma-backed LiveSessionRepository. */
 @Injectable()
-export class PrismaLiveSessionRepository extends LiveSessionRepository {
+export class PrismaRoomSessionRepository extends RoomSessionRepository {
   constructor(private readonly prisma: PrismaService) {
     super();
   }
 
-  async create(data: CreateLiveSessionData): Promise<LiveSession> {
-    const row = await this.prisma.liveSession.create({ data });
-    return toEntity(row);
+  async create(data: CreateRoomSessionData): Promise<RoomSession> {
+    return toEntity(await this.prisma.roomSession.create({ data }));
   }
 
-  async findById(id: string): Promise<LiveSession | null> {
-    const row = await this.prisma.liveSession.findUnique({ where: { id } });
+  async findById(id: string): Promise<RoomSession | null> {
+    const row = await this.prisma.roomSession.findUnique({ where: { id } });
     return row ? toEntity(row) : null;
   }
 
-  async findDetailsById(id: string): Promise<LiveSessionDetails | null> {
-    const row = await this.prisma.liveSession.findUnique({
+  async findDetailsById(id: string): Promise<RoomSessionDetails | null> {
+    const row = await this.prisma.roomSession.findUnique({
       where: { id },
       include: {
-        teacher: { select: { name: true } },
-        class: { select: { name: true } },
+        room: { include: { host: { select: { name: true } } } },
       },
     });
     if (!row) return null;
-    const { teacher, class: schoolClass, ...session } = row;
-    return new LiveSessionDetails({
+    const { room, ...session } = row;
+    return new RoomSessionDetails({
       ...toEntity(session),
-      teacherName: teacher.name,
-      className: schoolClass?.name ?? null,
+      roomName: room.name,
+      hostId: room.hostId,
+      hostName: room.host.name,
     });
   }
 
-  async findByJoinToken(joinToken: string): Promise<LiveSession | null> {
-    const row = await this.prisma.liveSession.findUnique({
+  async findByJoinToken(joinToken: string): Promise<RoomSession | null> {
+    const row = await this.prisma.roomSession.findUnique({
       where: { joinToken },
     });
     return row ? toEntity(row) : null;
   }
 
-  async findByClass(classId: string): Promise<LiveSession[]> {
-    const rows = await this.prisma.liveSession.findMany({
-      where: { classId },
-      orderBy: { startedAt: 'desc' },
+  async findByRoom(roomId: string): Promise<RoomSession[]> {
+    const rows = await this.prisma.roomSession.findMany({
+      where: { roomId },
+      orderBy: { createdAt: 'desc' },
     });
     return rows.map(toEntity);
   }
 
-  async end(id: string, endedAt: Date): Promise<LiveSession> {
-    const row = await this.prisma.liveSession.update({
-      where: { id },
-      data: { status: 'ENDED', endedAt },
-    });
-    return toEntity(row);
+  async start(id: string, startedAt: Date): Promise<RoomSession> {
+    return toEntity(
+      await this.prisma.roomSession.update({
+        where: { id },
+        data: { status: 'LIVE', startedAt },
+      }),
+    );
+  }
+
+  async end(id: string, endedAt: Date): Promise<RoomSession> {
+    return toEntity(
+      await this.prisma.roomSession.update({
+        where: { id },
+        data: { status: 'ENDED', endedAt },
+      }),
+    );
   }
 }

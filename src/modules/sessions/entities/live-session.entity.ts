@@ -1,39 +1,33 @@
-/**
- * SessionStatus — domain-level enum, mirrored by the Prisma `SessionStatus`.
- */
 export enum SessionStatus {
+  PREPARING = 'PREPARING',
   LIVE = 'LIVE',
   ENDED = 'ENDED',
 }
 
-/**
- * Domain representation of a live class session. Plain class — no Prisma
- * coupling. `classId === null` means an ad-hoc session (aula avulsa) joined
- * only via its joinToken/link.
- */
-export class LiveSession {
+export class RoomSession {
   id: string;
   title: string;
-  teacherId: string;
-  classId: string | null;
+  roomId: string;
   joinToken: string;
   status: SessionStatus;
-  startedAt: Date;
+  createdAt: Date;
+  startedAt: Date | null;
   endedAt: Date | null;
 
-  constructor(props: LiveSession) {
+  constructor(props: RoomSession) {
     Object.assign(this, props);
   }
 }
 
-/** Session enriched with display names for the session info screen. */
-export class LiveSessionDetails extends LiveSession {
-  teacherName: string;
-  className: string | null;
+export class RoomSessionDetails extends RoomSession {
+  roomName: string;
+  hostId: string;
+  hostName: string;
 
-  constructor(props: LiveSessionDetails) {
+  constructor(props: RoomSessionDetails) {
     super(props);
-    this.teacherName = props.teacherName;
-    this.className = props.className;
+    this.roomName = props.roomName;
+    this.hostId = props.hostId;
+    this.hostName = props.hostName;
   }
 }

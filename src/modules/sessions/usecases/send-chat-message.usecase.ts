@@ -4,51 +4,49 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ChatMessageWithAuthor } from '../entities/chat-message.entity';
+import { RoomParticipantRole } from '../../rooms/entities/room.entity';
+import { ChatMessage } from '../entities/chat-message.entity';
 import { SessionStatus } from '../entities/live-session.entity';
 import { ChatMessageRepository } from '../repositories/chat-message.repository';
-import { LiveSessionRepository } from '../repositories/live-session.repository';
+import { RoomSessionRepository } from '../repositories/live-session.repository';
 
 export const MAX_CHAT_MESSAGE_LENGTH = 2000;
 
-/**
- * SendChatMessage — persists a chat message in a LIVE session. Access to the
- * session was already established when the participant joined the room; this
- * usecase enforces content rules and the LIVE-only write window.
- */
+export interface ChatAuthor {
+  participantId: string;
+  name: string;
+  role: RoomParticipantRole;
+}
+
 @Injectable()
 export class SendChatMessageUseCase {
   constructor(
-    private readonly sessions: LiveSessionRepository,
+    private readonly sessions: RoomSessionRepository,
     private readonly messages: ChatMessageRepository,
   ) {}
 
   async execute(
-    actorUserId: string,
+    author: ChatAuthor,
     sessionId: string,
     text: string,
-  ): Promise<ChatMessageWithAuthor> {
+  ): Promise<ChatMessage> {
     const trimmed = text?.trim();
-    if (!trimmed) {
-      throw new BadRequestException('Message must not be empty');
-    }
+    if (!trimmed) throw new BadRequestException('Message must not be empty');
     if (trimmed.length > MAX_CHAT_MESSAGE_LENGTH) {
       throw new BadRequestException(
         `Message must be at most ${MAX_CHAT_MESSAGE_LENGTH} characters`,
       );
     }
-
     const session = await this.sessions.findById(sessionId);
-    if (!session) {
-      throw new NotFoundException('Session not found');
-    }
+    if (!session) throw new NotFoundException('Session not found');
     if (session.status !== SessionStatus.LIVE) {
-      throw new ConflictException('Session has already ended');
+      throw new ConflictException('Session is read-only');
     }
-
     return this.messages.create({
       sessionId,
-      userId: actorUserId,
+      participantId: author.participantId,
+      participantName: author.name,
+      participantRole: author.role,
       text: trimmed,
     });
   }

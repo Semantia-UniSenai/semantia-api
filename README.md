@@ -74,15 +74,18 @@ src/
 ## Fluxo atual da transcrição
 
 ```text
-browser → transcript:partial → broadcast efêmero
-browser → transcript:final → AppendTranscriptSegmentUseCase
-                            → limpeza conservadora
-                            → persistência por sequência
-                            → broadcast literal
+browser: SpeechRecognition nativo ou Vosk/WebAssembly local
+       → texto parcial/final → Socket.IO → persistência do texto final
 ```
 
-Somente o dono escolar atual (`teacherId`) publica transcript. Segmentos parciais não são
-persistidos. Frase final composta apenas por ruído retorna `seq: null` e não é emitida.
+A captura e o reconhecimento de fala acontecem no navegador do comunicador. Em navegadores sem
+`SpeechRecognition` funcional, o frontend carrega um modelo Vosk português e executa ASR localmente
+em um Web Worker. A API recebe apenas `transcript:partial` e `transcript:final` pelo namespace
+`/live`; não recebe, armazena nem envia áudio a serviço de transcrição.
+
+Somente `HOST` ou `MODERATOR` publica transcript. Segmentos parciais não são persistidos. Texto
+final passa por limpeza conservadora, sequência, persistência e broadcast. Frase final composta
+apenas por ruído retorna `seq: null` e não é emitida.
 
 ## Protocolo Socket.IO
 
@@ -135,8 +138,9 @@ Variáveis:
 | `CORS_ORIGIN` | origem permitida do frontend |
 | `PORT` | porta HTTP, padrão 3000 |
 
-Tokens de IA futuros devem permanecer em variáveis de ambiente do backend e nunca no frontend,
-banco, logs, docs ou prompts versionados.
+Tokens de IA de etapas futuras devem permanecer em variáveis de ambiente do backend e nunca no
+frontend, banco, logs, docs ou prompts versionados. A transcrição literal atual não exige credencial
+de STT no backend.
 
 ## Gates
 
