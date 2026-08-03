@@ -4,6 +4,13 @@ Semantia follows **Clean Architecture** with the **Repository Pattern**. The
 goal is that business rules (usecases) never depend on a framework or a
 database — they depend only on **interfaces** they define.
 
+The current integrated code includes auth, games, classes, live sessions,
+transcript, chat and Socket.IO. `PROFESSOR`, `ALUNO`, `SchoolClass` and
+`teacherId` are an implemented educational foundation, not the final product
+contract. The target domain uses rooms, hosts/communicators and participants;
+see the canonical contract in `semantia-cerebro` before changing permissions or
+the schema.
+
 ## Layers
 
 ```
@@ -61,8 +68,32 @@ the CLI from `prisma.config.ts`.
    controllers. The userId for writes always comes from the token, never the
    request body.
 
-`AuthModule` registers `JwtModule` and **exports** it; `GamesModule` imports
-`AuthModule` so its `JwtAuthGuard` can resolve `JwtService`.
+`AuthModule` registers `JwtModule` and **exports** it; protected modules import
+`AuthModule` so guards and the live handshake can resolve `JwtService`.
+
+## Live communication flow
+
+The REST controllers and Socket.IO gateway delegate to the same `sessions`
+usecases. This prevents HTTP and realtime clients from applying different
+access, ownership or persistence rules.
+
+```text
+REST controller ─┐
+                 ├─▶ session usecase ─▶ repository interface ─▶ Prisma
+Socket gateway ──┘
+```
+
+- `live.gateway.ts` authenticates the handshake, keeps socket presence and
+  delegates business decisions.
+- `LiveRoomStateService` stores ephemeral presence/raised-hands state only.
+- final transcript segments are cleaned inside
+  `AppendTranscriptSegmentUseCase` before persistence and broadcast.
+- partial transcript events are ephemeral and never enter Prisma.
+- every client event returns a standardized success/error acknowledgement.
+
+The planned AI adapter must live behind a backend usecase/service boundary.
+Literal cleaned text remains canonical; provider failure must fall back to it.
+Provider credentials never belong in the browser, database or transcript logs.
 
 ## Adding a new game
 
