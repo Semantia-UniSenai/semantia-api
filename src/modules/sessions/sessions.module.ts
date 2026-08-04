@@ -41,6 +41,7 @@ import { SendChatMessageUseCase } from './usecases/send-chat-message.usecase';
   ],
   exports: [
     RoomSessionRepository,
+    TranscriptRepository,
     CheckSessionAccessUseCase,
     GetSessionSnapshotUseCase,
     EndSessionUseCase,

@@ -1,14 +1,13 @@
 services:
   postgres:
     image: postgres:16
-    container_name: semantia-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: semantia
       POSTGRES_PASSWORD: semantia
       POSTGRES_DB: semantia
     ports:
-      - '5432:5432'
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     volumes:
       - semantia-pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -17,5 +16,28 @@ services:
       timeout: 5s
       retries: 5
 
+  asr:
+    build:
+      context: ./asr-service
+    restart: unless-stopped
+    environment:
+      ASR_ENV: ${ASR_ENV:-development}
+      ASR_PROVIDER: ${ASR_PROVIDER:-faster-whisper}
+      ASR_MODEL: ${ASR_MODEL:-small}
+      ASR_DEVICE: ${ASR_DEVICE:-cpu}
+      ASR_COMPUTE_TYPE: ${ASR_COMPUTE_TYPE:-int8}
+      ASR_CPU_THREADS: ${ASR_CPU_THREADS:-2}
+      ASR_MAX_CONCURRENCY: ${ASR_MAX_CONCURRENCY:-1}
+      ASR_MAX_QUEUE: ${ASR_MAX_QUEUE:-4}
+      ASR_PRELOAD: ${ASR_PRELOAD:-true}
+      HF_HOME: /models/huggingface
+    cpus: ${ASR_CPUS:-2}
+    mem_limit: ${ASR_MEMORY_LIMIT:-3g}
+    volumes:
+      - semantia-asr-models:/models
+    ports:
+      - '127.0.0.1:${ASR_PORT:-8000}:8000'
+
 volumes:
   semantia-pgdata:
+  semantia-asr-models:

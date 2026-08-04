@@ -25,6 +25,7 @@ const details = new RoomSessionDetails({
 function setup(
   role: RoomParticipantRole,
   kind: 'account' | 'guest' = 'account',
+  asrMode: 'browser' | 'backend' = 'browser',
 ) {
   const state = new LiveRoomStateService();
   const snapshot = {
@@ -57,6 +58,10 @@ function setup(
       .fn()
       .mockResolvedValue({ ...details, status: SessionStatus.ENDED }),
   };
+  const transcribeAudio = { execute: jest.fn() };
+  const config = {
+    get: jest.fn((name: string) => (name === 'ASR_MODE' ? asrMode : undefined)),
+  };
   const gateway = new LiveGateway(
     {} as never,
     {} as never,
@@ -67,6 +72,8 @@ function setup(
     append as never,
     chat as never,
     end as never,
+    transcribeAudio as never,
+    config as never,
   );
   const serverEmit = jest.fn();
   (gateway as unknown as { server: unknown }).server = {
@@ -98,12 +105,123 @@ function setup(
     append,
     chat,
     end,
+    transcribeAudio,
     socketEmit,
     serverEmit,
   };
 }
 
 describe('LiveGateway generic identities', () => {
+  it('accepts host PCM and broadcasts only the backend canonical final', async () => {
+    const { gateway, socket, transcribeAudio, serverEmit, socketEmit } = setup(
+      RoomParticipantRole.HOST,
+      'account',
+      'backend',
+    );
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+    const segment = {
+      id: 'segment-1',
+      sessionId: details.id,
+      clientSegmentId: 'segment-audio-1',
+      seq: 1,
+      text: 'Comunicação acessível',
+      createdAt: new Date(),
+    };
+    transcribeAudio.execute.mockResolvedValue({
+      segment,
+      created: true,
+      replayed: false,
+      engine: 'faster-whisper',
+      model: 'small',
+      inferenceMs: 42,
+    });
+    const pcm16 = Buffer.alloc(32_000);
+
+    await expect(
+      gateway.onTranscriptionAudio(socket as never, {
+        clientSegmentId: 'segment-audio-1',
+        pcm16: new Uint8Array(pcm16),
+        sampleRate: 16_000,
+        durationMs: 1_000,
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      seq: 1,
+      replayed: false,
+      engine: 'faster-whisper',
+      model: 'small',
+      inferenceMs: 42,
+    });
+    expect(transcribeAudio.execute).toHaveBeenCalledWith(
+      'account-1',
+      details.id,
+      expect.objectContaining({
+        clientSegmentId: 'segment-audio-1',
+        pcm16,
+        sampleRate: 16_000,
+      }),
+    );
+    expect(serverEmit).toHaveBeenCalledWith(
+      'transcript:final',
+      expect.objectContaining({ seq: 1, text: 'Comunicação acessível' }),
+    );
+    expect(socketEmit).toHaveBeenCalledWith(
+      'transcription:status',
+      expect.objectContaining({
+        clientSegmentId: 'segment-audio-1',
+        state: 'processing',
+      }),
+    );
+  });
+
+  it('rejects moderator audio before invoking backend ASR', async () => {
+    const { gateway, socket, transcribeAudio } = setup(
+      RoomParticipantRole.MODERATOR,
+      'account',
+      'backend',
+    );
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+
+    await expect(
+      gateway.onTranscriptionAudio(socket as never, {
+        clientSegmentId: 'segment-audio-2',
+        pcm16: Buffer.alloc(32_000),
+        sampleRate: 16_000,
+        durationMs: 1_000,
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'FORBIDDEN',
+        message: 'Only the host can publish the transcript',
+      },
+    });
+    expect(transcribeAudio.execute).not.toHaveBeenCalled();
+  });
+
+  it('disables client textual finals when backend ASR is active', async () => {
+    const { gateway, socket, append } = setup(
+      RoomParticipantRole.HOST,
+      'account',
+      'backend',
+    );
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+
+    await expect(
+      gateway.onTranscriptFinal(socket as never, {
+        text: 'texto não canônico',
+        clientSegmentId: 'segment-text-1',
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'CLIENT_FINAL_DISABLED',
+        message: 'Final transcript must be produced by backend ASR',
+      },
+    });
+    expect(append.execute).not.toHaveBeenCalled();
+  });
+
   it.each([RoomParticipantRole.HOST, RoomParticipantRole.MODERATOR])(
     'joins a %s and exposes contextual management permission',
     async (role) => {

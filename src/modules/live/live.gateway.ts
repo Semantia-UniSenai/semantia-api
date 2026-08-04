@@ -1,4 +1,5 @@
 import { HttpException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import {
   OnGatewayDisconnect,
@@ -9,6 +10,9 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { UserRepository } from '../auth/repositories/user.repository';
+import { AsrClientError } from '../asr/asr-client';
+import { parseAudioSegment } from '../asr/audio-segment';
+import { TranscribeAudioSegmentUseCase } from '../asr/usecases/transcribe-audio-segment.usecase';
 import { RoomParticipantRole } from '../rooms/entities/room.entity';
 import { RoomPermissionService } from '../rooms/room-permission.service';
 import { SessionStatus } from '../sessions/entities/live-session.entity';
@@ -53,6 +57,7 @@ const CODE_BY_STATUS: Record<number, string> = {
     origin: process.env.CORS_ORIGIN ?? '*',
     credentials: true,
   },
+  maxHttpBufferSize: 1_100_000,
 })
 export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   @WebSocketServer()
@@ -70,6 +75,8 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     private readonly appendTranscriptSegment: AppendTranscriptSegmentUseCase,
     private readonly sendChatMessage: SendChatMessageUseCase,
     private readonly endSession: EndSessionUseCase,
+    private readonly transcribeAudioSegment: TranscribeAudioSegmentUseCase,
+    private readonly config: ConfigService,
   ) {}
 
   afterInit(server: Server): void {
@@ -229,6 +236,12 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   ): Promise<Ack<{ seq: number | null; replayed: boolean }>> {
     try {
       const { identity, sessionId } = this.requireParticipant(socket);
+      if (this.backendAsrEnabled()) {
+        return this.errorAck(
+          'CLIENT_FINAL_DISABLED',
+          'Final transcript must be produced by backend ASR',
+        );
+      }
       if (identity.kind !== 'account') {
         return this.errorAck(
           'FORBIDDEN',
@@ -262,6 +275,84 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
       };
     } catch (error) {
       return this.toErrorAck(error);
+    }
+  }
+
+  @SubscribeMessage('transcription:audio')
+  async onTranscriptionAudio(
+    socket: LiveSocket,
+    body: unknown,
+  ): Promise<
+    Ack<{
+      seq: number | null;
+      replayed: boolean;
+      engine: string | null;
+      model: string | null;
+      inferenceMs: number | null;
+    }>
+  > {
+    let clientSegmentId: string | null = null;
+    try {
+      const { identity, sessionId, status } = this.requireParticipant(socket);
+      if (!this.backendAsrEnabled()) {
+        return this.errorAck('ASR_DISABLED', 'Backend ASR is not enabled');
+      }
+      if (
+        identity.kind !== 'account' ||
+        identity.role !== RoomParticipantRole.HOST
+      ) {
+        return this.errorAck(
+          'FORBIDDEN',
+          'Only the host can publish the transcript',
+        );
+      }
+      if (status !== SessionStatus.LIVE) {
+        return this.errorAck('SESSION_READ_ONLY', 'Session is read-only');
+      }
+
+      const audio = parseAudioSegment(body);
+      clientSegmentId = audio.clientSegmentId;
+      socket.emit('transcription:status', {
+        clientSegmentId,
+        state: 'processing',
+      });
+      const result = await this.transcribeAudioSegment.execute(
+        identity.participantId,
+        sessionId,
+        audio,
+      );
+      if (result.created && result.segment) {
+        this.server.to(roomOf(sessionId)).emit('transcript:final', {
+          seq: result.segment.seq,
+          text: result.segment.text,
+          at: result.segment.createdAt,
+        });
+      }
+      socket.emit('transcription:status', {
+        clientSegmentId,
+        state: 'complete',
+        engine: result.engine,
+        model: result.model,
+        inferenceMs: result.inferenceMs,
+      });
+      return {
+        ok: true,
+        seq: result.segment?.seq ?? null,
+        replayed: result.replayed,
+        engine: result.engine,
+        model: result.model,
+        inferenceMs: result.inferenceMs,
+      };
+    } catch (error) {
+      const ack = this.toErrorAck(error);
+      if (clientSegmentId) {
+        socket.emit('transcription:status', {
+          clientSegmentId,
+          state: 'failed',
+          code: ack.error.code,
+        });
+      }
+      return ack;
     }
   }
 
@@ -414,12 +505,22 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     return { ok: false, error: { code, message } };
   }
 
+  private backendAsrEnabled(): boolean {
+    return (this.config.get<string>('ASR_MODE') ?? 'backend') === 'backend';
+  }
+
   private toErrorAck(error: unknown): {
     ok: false;
     error: { code: string; message: string };
   } {
     if (error instanceof WsError) {
       return { ok: false, error: { code: error.code, message: error.message } };
+    }
+    if (error instanceof AsrClientError) {
+      return {
+        ok: false,
+        error: { code: error.code, message: error.message },
+      };
     }
     if (error instanceof HttpException) {
       return {

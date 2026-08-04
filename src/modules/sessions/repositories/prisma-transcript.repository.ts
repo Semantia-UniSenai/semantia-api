@@ -70,6 +70,16 @@ export class PrismaTranscriptRepository extends TranscriptRepository {
     );
   }
 
+  async findByClientSegmentId(
+    sessionId: string,
+    clientSegmentId: string,
+  ): Promise<TranscriptSegment | null> {
+    const row = await this.prisma.transcriptSegment.findUnique({
+      where: { sessionId_clientSegmentId: { sessionId, clientSegmentId } },
+    });
+    return row ? new TranscriptSegment(row) : null;
+  }
+
   async findBySession(sessionId: string): Promise<TranscriptSegment[]> {
     const rows = await this.prisma.transcriptSegment.findMany({
       where: { sessionId },

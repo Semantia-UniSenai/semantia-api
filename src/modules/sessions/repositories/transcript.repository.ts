@@ -16,6 +16,10 @@ export abstract class TranscriptRepository {
     text: string,
     clientSegmentId: string,
   ): Promise<AppendTranscriptResult>;
+  abstract findByClientSegmentId(
+    sessionId: string,
+    clientSegmentId: string,
+  ): Promise<TranscriptSegment | null>;
   abstract findBySession(sessionId: string): Promise<TranscriptSegment[]>;
   abstract findLast(
     sessionId: string,
