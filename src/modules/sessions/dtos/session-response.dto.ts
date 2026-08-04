@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { AudienceContextDto } from './audience-context.dto';
 import { SessionStatus } from '../entities/live-session.entity';
 
 export class SessionDto {
@@ -16,6 +17,9 @@ export class SessionDto {
 
   @ApiProperty({ enum: SessionStatus, enumName: 'SessionStatus' })
   status: SessionStatus;
+
+  @ApiProperty({ type: AudienceContextDto, nullable: true })
+  audienceContext: AudienceContextDto | null;
 
   @ApiProperty()
   createdAt: Date;

@@ -14,6 +14,7 @@ const details = new RoomSessionDetails({
   roomId: 'room-1',
   joinToken: 'tok_abc1234567890',
   status: SessionStatus.LIVE,
+  audienceContext: null,
   createdAt: new Date(),
   startedAt: new Date(),
   endedAt: null,
@@ -230,7 +231,7 @@ describe('LiveGateway generic identities', () => {
 
   it('allows a guest to chat using an ephemeral identity', async () => {
     const { gateway, socket, chat } = setup(RoomParticipantRole.GUEST, 'guest');
-    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+    await gateway.onSessionJoin(socket, { sessionId: details.id });
     await expect(
       gateway.onChatSend(socket as never, { text: 'Olá' }),
     ).resolves.toEqual({ ok: true, id: 'message-1' });
@@ -242,5 +243,23 @@ describe('LiveGateway generic identities', () => {
       details.id,
       'Olá',
     );
+  });
+
+  it('never lets a guest publish final transcript segments', async () => {
+    const { gateway, socket, append } = setup(
+      RoomParticipantRole.GUEST,
+      'guest',
+    );
+    await gateway.onSessionJoin(socket, { sessionId: details.id });
+    await expect(
+      gateway.onTranscriptFinal(socket as never, { text: 'segredo' }),
+    ).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'FORBIDDEN',
+        message: 'Guests cannot publish the transcript',
+      },
+    });
+    expect(append.execute).not.toHaveBeenCalled();
   });
 });

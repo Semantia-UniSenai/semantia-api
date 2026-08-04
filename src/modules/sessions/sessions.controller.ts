@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -18,6 +19,7 @@ import { CurrentUser } from '../../shared/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import type { AuthUser } from '../../shared/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../shared/guards/optional-jwt-auth.guard';
+import { AudienceContextDto } from './dtos/audience-context.dto';
 import { CreateGuestAccessDto, GuestAccessDto } from './dtos/guest-access.dto';
 import {
   ResolvedSessionDto,
@@ -39,6 +41,7 @@ import { EndSessionUseCase } from './usecases/end-session.usecase';
 import { GetSessionUseCase } from './usecases/get-session.usecase';
 import { GetTranscriptUseCase } from './usecases/get-transcript.usecase';
 import { ResolveJoinTokenUseCase } from './usecases/resolve-join-token.usecase';
+import { UpdateSessionContextUseCase } from './usecases/update-session-context.usecase';
 
 const principalOf = (actor?: AuthUser) =>
   actor ? { participantId: actor.userId, kind: 'account' as const } : null;
@@ -52,6 +55,7 @@ export class SessionsController {
     private readonly resolveJoinToken: ResolveJoinTokenUseCase,
     private readonly createGuestAccess: CreateGuestAccessUseCase,
     private readonly getTranscript: GetTranscriptUseCase,
+    private readonly updateContext: UpdateSessionContextUseCase,
   ) {}
 
   @Get('resolve')
@@ -74,6 +78,22 @@ export class SessionsController {
   @ApiResponse({ status: 200, type: GuestAccessDto })
   guest(@Body() dto: CreateGuestAccessDto): Promise<GuestAccessDto> {
     return this.createGuestAccess.execute(dto.joinToken, dto.displayName);
+  }
+
+  @Patch(':id/context')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    operationId: 'updateSessionContext',
+    summary: 'Set the audience context before starting the session',
+  })
+  @ApiResponse({ status: 200, type: SessionDto })
+  updateAudienceContext(
+    @CurrentUser() actor: AuthUser,
+    @Param('id') sessionId: string,
+    @Body() dto: AudienceContextDto,
+  ): Promise<RoomSession> {
+    return this.updateContext.execute(actor.userId, sessionId, dto);
   }
 
   @Post(':id/end')
