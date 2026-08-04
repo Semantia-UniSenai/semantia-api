@@ -154,4 +154,73 @@ describe('LiveGateway generic identities', () => {
     });
     expect(append.execute).not.toHaveBeenCalled();
   });
+
+  it('never lets a moderator publish partial or final transcript segments', async () => {
+    const { gateway, socket, append, serverEmit } = setup(
+      RoomParticipantRole.MODERATOR,
+    );
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+
+    expect(
+      gateway.onTranscriptPartial(socket as never, {
+        text: 'parcial indevida',
+      }),
+    ).toEqual({
+      ok: false,
+      error: {
+        code: 'FORBIDDEN',
+        message: 'Only the host can publish the transcript',
+      },
+    });
+    await expect(
+      gateway.onTranscriptFinal(socket as never, {
+        text: 'final indevida',
+        clientSegmentId: 'segment-moderator-1',
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'FORBIDDEN',
+        message: 'Only the host can publish the transcript',
+      },
+    });
+    expect(append.execute).not.toHaveBeenCalled();
+    expect(serverEmit).not.toHaveBeenCalledWith(
+      'transcript:final',
+      expect.anything(),
+    );
+  });
+
+  it('acknowledges a retried final segment without broadcasting it twice', async () => {
+    const { gateway, socket, append, serverEmit } = setup(
+      RoomParticipantRole.HOST,
+    );
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+    const segment = {
+      id: 'segment-1',
+      sessionId: details.id,
+      clientSegmentId: 'segment-client-1',
+      seq: 1,
+      text: 'Texto acessível',
+      createdAt: new Date(),
+    };
+    append.execute.mockResolvedValue({ segment, created: false });
+
+    await expect(
+      gateway.onTranscriptFinal(socket as never, {
+        text: 'Texto acessível',
+        clientSegmentId: 'segment-client-1',
+      }),
+    ).resolves.toEqual({ ok: true, seq: 1, replayed: true });
+    expect(append.execute).toHaveBeenCalledWith(
+      'account-1',
+      details.id,
+      'Texto acessível',
+      'segment-client-1',
+    );
+    expect(serverEmit).not.toHaveBeenCalledWith(
+      'transcript:final',
+      expect.anything(),
+    );
+  });
 });

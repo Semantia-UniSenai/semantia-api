@@ -199,10 +199,10 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   onTranscriptPartial(socket: LiveSocket, body: { text?: string }): Ack {
     try {
       const { identity, sessionId, status } = this.requireParticipant(socket);
-      if (!this.permissions.canManage(identity.role)) {
+      if (identity.role !== RoomParticipantRole.HOST) {
         return this.errorAck(
           'FORBIDDEN',
-          'Only a host or moderator can publish the transcript',
+          'Only the host can publish the transcript',
         );
       }
       if (status !== SessionStatus.LIVE) {
@@ -225,8 +225,8 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   @SubscribeMessage('transcript:final')
   async onTranscriptFinal(
     socket: LiveSocket,
-    body: { text?: string },
-  ): Promise<Ack<{ seq: number | null }>> {
+    body: { text?: string; clientSegmentId?: string },
+  ): Promise<Ack<{ seq: number | null; replayed: boolean }>> {
     try {
       const { identity, sessionId } = this.requireParticipant(socket);
       if (identity.kind !== 'account') {
@@ -235,18 +235,31 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
           'Guests cannot publish the transcript',
         );
       }
-      const segment = await this.appendTranscriptSegment.execute(
+      if (identity.role !== RoomParticipantRole.HOST) {
+        return this.errorAck(
+          'FORBIDDEN',
+          'Only the host can publish the transcript',
+        );
+      }
+      const result = await this.appendTranscriptSegment.execute(
         identity.participantId,
         sessionId,
         body?.text ?? '',
+        body?.clientSegmentId,
       );
-      if (!segment) return { ok: true, seq: null };
-      this.server.to(roomOf(sessionId)).emit('transcript:final', {
-        seq: segment.seq,
-        text: segment.text,
-        at: segment.createdAt,
-      });
-      return { ok: true, seq: segment.seq };
+      if (!result) return { ok: true, seq: null, replayed: false };
+      if (result.created) {
+        this.server.to(roomOf(sessionId)).emit('transcript:final', {
+          seq: result.segment.seq,
+          text: result.segment.text,
+          at: result.segment.createdAt,
+        });
+      }
+      return {
+        ok: true,
+        seq: result.segment.seq,
+        replayed: !result.created,
+      };
     } catch (error) {
       return this.toErrorAck(error);
     }

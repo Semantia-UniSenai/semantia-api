@@ -2,6 +2,7 @@ packages:
   - .
 
 overrides:
+  fast-uri: 3.1.5
+  js-yaml: 4.3.0
   multer: 2.2.0
-  "js-yaml@>=4.0.0 <4.3.0": 4.3.0
-  "fast-uri@>=3.0.0 <3.1.4": 3.1.4
+  socket.io-parser: 4.2.7
