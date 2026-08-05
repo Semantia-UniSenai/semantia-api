@@ -4,7 +4,7 @@ import { HttpAsrClient } from './http-asr.client';
 const request = {
   requestId: 'segment-0001',
   pcm16: Buffer.alloc(32_000),
-  sampleRate: 16_000,
+  sampleRate: 16_000 as const,
   durationMs: 1_000,
   language: 'pt' as const,
 };
@@ -87,6 +87,34 @@ describe('HttpAsrClient', () => {
     expect(() => new HttpAsrClient(config)).toThrow(
       'ASR_TIMEOUT_MS must be a positive integer',
     );
+  });
+
+  it('accepts an empty canonical result as successful no-speech', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          requestId: request.requestId,
+          text: '',
+          engine: 'faster-whisper',
+          model: 'small',
+          inferenceMs: 21,
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
+    );
+    const client = new HttpAsrClient({
+      get: jest.fn(),
+    } as unknown as ConfigService);
+
+    await expect(client.transcribe(request)).resolves.toEqual({
+      text: '',
+      engine: 'faster-whisper',
+      model: 'small',
+      inferenceMs: 21,
+    });
   });
 
   it('rejects a malformed success response instead of publishing invented text', async () => {

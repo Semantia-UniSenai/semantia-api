@@ -25,8 +25,16 @@ export interface TranscribedAudioSegment {
   inferenceMs: number | null;
 }
 
+const NO_SPEECH_REPLAY_TTL_MS = 120_000;
+
+type NoSpeechReplay = Pick<
+  TranscribedAudioSegment,
+  'engine' | 'model' | 'inferenceMs'
+> & { expiresAt: number };
+
 @Injectable()
 export class TranscribeAudioSegmentUseCase {
+  private readonly noSpeechReplays = new Map<string, NoSpeechReplay>();
   constructor(
     private readonly sessions: RoomSessionRepository,
     private readonly rooms: RoomRepository,
@@ -58,6 +66,12 @@ export class TranscribeAudioSegmentUseCase {
       throw new ConflictException('Session is read-only');
     }
 
+    const noSpeechReplay = this.getNoSpeechReplay(
+      sessionId,
+      audio.clientSegmentId,
+    );
+    if (noSpeechReplay) return noSpeechReplay;
+
     const replay = await this.transcripts.findByClientSegmentId(
       sessionId,
       audio.clientSegmentId,
@@ -81,10 +95,22 @@ export class TranscribeAudioSegmentUseCase {
           durationMs: audio.durationMs,
           language: audio.language,
         });
+        const normalizedText = result.text.trim();
+        if (!normalizedText) {
+          this.rememberNoSpeech(sessionId, audio.clientSegmentId, result);
+          return {
+            segment: null,
+            created: false,
+            replayed: false,
+            engine: result.engine,
+            model: result.model,
+            inferenceMs: result.inferenceMs,
+          };
+        }
         const appended = await this.appendTranscript.execute(
           actorUserId,
           sessionId,
-          result.text,
+          normalizedText,
           audio.clientSegmentId,
         );
         return {
@@ -97,6 +123,37 @@ export class TranscribeAudioSegmentUseCase {
         };
       },
     );
+  }
+
+  private getNoSpeechReplay(
+    sessionId: string,
+    clientSegmentId: string,
+  ): TranscribedAudioSegment | null {
+    const now = Date.now();
+    for (const [key, value] of this.noSpeechReplays) {
+      if (value.expiresAt <= now) this.noSpeechReplays.delete(key);
+    }
+    const replay = this.noSpeechReplays.get(`${sessionId}:${clientSegmentId}`);
+    if (!replay) return null;
+    return {
+      segment: null,
+      created: false,
+      replayed: true,
+      engine: replay.engine,
+      model: replay.model,
+      inferenceMs: replay.inferenceMs,
+    };
+  }
+
+  private rememberNoSpeech(
+    sessionId: string,
+    clientSegmentId: string,
+    result: Pick<TranscribedAudioSegment, 'engine' | 'model' | 'inferenceMs'>,
+  ): void {
+    this.noSpeechReplays.set(`${sessionId}:${clientSegmentId}`, {
+      ...result,
+      expiresAt: Date.now() + NO_SPEECH_REPLAY_TTL_MS,
+    });
   }
 
   private replayed(segment: TranscriptSegment): TranscribedAudioSegment {

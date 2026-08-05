@@ -114,6 +114,62 @@ describe('TranscribeAudioSegmentUseCase', () => {
     );
   });
 
+  it('treats an empty ASR result as successful no-speech without persistence', async () => {
+    const { useCase, transcripts, asr, append } = setup();
+    transcripts.findByClientSegmentId.mockResolvedValue(null);
+    asr.transcribe.mockResolvedValue({
+      text: '',
+      engine: 'faster-whisper',
+      model: 'small',
+      inferenceMs: 21,
+    });
+
+    const first = await useCase.execute('host-1', 'session-1', audio);
+    const replay = await useCase.execute('host-1', 'session-1', audio);
+
+    expect(first).toEqual({
+      segment: null,
+      created: false,
+      replayed: false,
+      engine: 'faster-whisper',
+      model: 'small',
+      inferenceMs: 21,
+    });
+    expect(replay).toEqual({
+      segment: null,
+      created: false,
+      replayed: true,
+      engine: 'faster-whisper',
+      model: 'small',
+      inferenceMs: 21,
+    });
+    expect(asr.transcribe).toHaveBeenCalledTimes(1);
+    expect(append.execute).not.toHaveBeenCalled();
+  });
+
+  it('expires the ephemeral no-speech replay cache', async () => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1_000);
+    try {
+      const { useCase, transcripts, asr, append } = setup();
+      transcripts.findByClientSegmentId.mockResolvedValue(null);
+      asr.transcribe.mockResolvedValue({
+        text: '',
+        engine: 'faster-whisper',
+        model: 'small',
+        inferenceMs: 21,
+      });
+
+      await useCase.execute('host-1', 'session-1', audio);
+      now.mockReturnValue(121_001);
+      await useCase.execute('host-1', 'session-1', audio);
+
+      expect(asr.transcribe).toHaveBeenCalledTimes(2);
+      expect(append.execute).not.toHaveBeenCalled();
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it('rejects a non-host before audio reaches the ASR client', async () => {
     const { useCase, asr } = setup(
       SessionStatus.LIVE,

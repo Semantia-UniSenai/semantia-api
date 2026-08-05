@@ -34,7 +34,7 @@ class Settings:
     max_concurrency: int = 1
     max_queue: int = 4
     preload: bool = True
-    hotwords: str = "Semantia Vosk Whisper Socket.IO WebSocket TypeScript PostgreSQL"
+    hotwords: str = "Semantia Socket.IO WebSocket TypeScript PostgreSQL"
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -50,7 +50,7 @@ class Settings:
             preload=_read_bool("ASR_PRELOAD", True),
             hotwords=os.getenv(
                 "ASR_HOTWORDS",
-                "Semantia Vosk Whisper Socket.IO WebSocket TypeScript PostgreSQL",
+                "Semantia Socket.IO WebSocket TypeScript PostgreSQL",
             ).strip(),
         )
         if settings.provider != "faster-whisper":

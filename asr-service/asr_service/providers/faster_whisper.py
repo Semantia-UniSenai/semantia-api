@@ -50,7 +50,6 @@ class FasterWhisperProvider:
             language=language,
             task="transcribe",
             beam_size=5,
-            vad_filter=True,
             condition_on_previous_text=False,
             hotwords=self._hotwords,
         )

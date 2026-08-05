@@ -60,27 +60,28 @@ repositório; Prisma fica nas implementações concretas. Controllers e gateway 
 Veja [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ```text
-src/
-├── database/                 # PrismaService e módulo global
-├── modules/
-│   ├── auth/                 # signup, signin, me e JWT
-│   ├── games/                # scores e ranking
-│   ├── classes/              # turmas legadas e membros
-│   ├── sessions/             # sessões, transcript, chat e regras de acesso
-│   ├── asr/                  # validação PCM, cliente interno, fila e final canônico
-│   ├── live/                 # gateway Socket.IO /live e presença em memória
-│   └── health/               # liveness + ping real ao banco
-└── shared/                   # guards, roles, decorators, filtros e utilitários
+├── asr-service/              # FastAPI + faster-whisper CPU/int8, privado e efêmero
+└── src/
+    ├── database/             # PrismaService e módulo global
+    ├── modules/
+    │   ├── auth/             # signup, signin, me e JWT
+    │   ├── games/            # scores e ranking
+    │   ├── classes/          # turmas legadas e membros
+    │   ├── sessions/         # sessões, transcript, chat e regras de acesso
+    │   ├── asr/              # validação PCM, cliente interno, fila e final canônico
+    │   ├── live/             # gateway Socket.IO /live e presença em memória
+    │   └── health/           # liveness + ping real ao banco
+    └── shared/               # guards, roles, decorators, filtros e utilitários
 ```
 
 ## Fluxo atual da transcrição
 
 ```text
-getUserMedia + AudioWorklet → Vosk local (parcial efêmero)
-                           → PCM16/16 kHz segmentado
-                           → Socket.IO autenticado
+captura PCM do navegador em janelas fixas de 5 s
+                           → PCM16 mono/16 kHz
+                           → Socket.IO autenticado (`transcription:audio`)
                            → API: autorização + idempotência + fila por sessão
-                           → ASR interno: faster-whisper small/int8 em CPU
+                           → ASR interno: faster-whisper small/int8 em CPU, sem VAD
                            → único final canônico → PostgreSQL + broadcast
 ```
 
@@ -90,12 +91,12 @@ a 1,1 MB. A fila do navegador e a fila por sessão da API têm no máximo oito s
 opera com uma inferência concorrente e fila própria limitada.
 
 O áudio existe somente em memória e é descartado após sucesso, falha, expiração, saída ou encerramento.
-Nenhum WAV/PCM entra no PostgreSQL ou em volume. O modo `ASR_MODE=backend` rejeita `transcript:final`
-vindo do cliente; apenas o resultado ASR pode ser limpo, sequenciado, persistido e transmitido.
+Nenhum WAV/PCM entra no PostgreSQL ou em volume. O gateway não possui handlers para texto parcial ou
+final fornecido pelo cliente; apenas o resultado do ASR interno pode ser limpo, sequenciado, persistido
+e transmitido. Resultado vazio é ACK de no-speech sem criar segmento.
 
-Parciais Vosk continuam textuais, efêmeras e não persistidas. O mesmo `clientSegmentId` acompanha retry
-e replay: segmentos já persistidos são retornados antes de nova inferência, e duplicatas concorrentes na
-mesma instância compartilham a mesma Promise.
+O mesmo `clientSegmentId` acompanha retry e replay: segmentos já persistidos são retornados antes de
+nova inferência, e duplicatas concorrentes na mesma instância compartilham a mesma Promise.
 
 A LLM/agente futuro é outro componente e consumirá o texto final; ela não substitui o ASR literal.
 
@@ -106,9 +107,7 @@ Namespace `/live`, handshake com JWT e room `session:<id>`.
 Eventos do cliente:
 
 - `session:join`, `session:leave`, `session:end`;
-- `transcript:partial`;
 - `transcription:audio` com PCM16 binário, somente `HOST`;
-- `transcript:final` apenas no modo legado `ASR_MODE=browser`;
 - `chat:send`;
 - `hand:raise`, `hand:lower`.
 
@@ -151,7 +150,6 @@ Variáveis:
 | `JWT_SECRET` | assinatura dos tokens; obrigatória fora de teste |
 | `CORS_ORIGIN` | origem permitida do frontend |
 | `PORT` | porta HTTP, padrão 3000 |
-| `ASR_MODE` | `backend` por padrão; `browser` somente para rollback explícito |
 | `ASR_URL` | URL privada do serviço ASR |
 | `ASR_TIMEOUT_MS` | deadline da chamada interna, padrão 45000 ms |
 

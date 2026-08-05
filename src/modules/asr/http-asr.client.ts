@@ -78,7 +78,6 @@ export class HttpAsrClient extends AsrClient {
     if (
       !body ||
       typeof body.text !== 'string' ||
-      !body.text.trim() ||
       typeof body.engine !== 'string' ||
       !body.engine ||
       typeof body.model !== 'string' ||

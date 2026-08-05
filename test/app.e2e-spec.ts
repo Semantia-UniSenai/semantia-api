@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { io, Socket } from 'socket.io-client';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { AsrClient } from '../src/modules/asr/asr-client';
 
 jest.setTimeout(30_000);
 
@@ -64,14 +65,22 @@ describe('generic communication rooms (e2e)', () => {
   let baseUrl: string;
   let hostSocket: Socket | undefined;
   let guestSocket: Socket | undefined;
-  let previousAsrMode: string | undefined;
+  const asrClient = {
+    transcribe: jest.fn().mockResolvedValue({
+      text: 'né, comunicação preservada.',
+      engine: 'faster-whisper',
+      model: 'small',
+      inferenceMs: 42,
+    }),
+  };
 
   beforeAll(async () => {
-    previousAsrMode = process.env.ASR_MODE;
-    process.env.ASR_MODE = 'browser';
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(AsrClient)
+      .useValue(asrClient)
+      .compile();
     app = moduleFixture.createNestApplication();
     app.useGlobalPipes(
       new ValidationPipe({
@@ -90,8 +99,6 @@ describe('generic communication rooms (e2e)', () => {
     guestSocket?.disconnect();
     hostSocket?.disconnect();
     if (app) await app.close();
-    if (previousAsrMode === undefined) delete process.env.ASR_MODE;
-    else process.env.ASR_MODE = previousAsrMode;
   });
 
   it('opens an instant meeting, invites a guest and ends it without exposing preparation', async () => {
@@ -200,10 +207,25 @@ describe('generic communication rooms (e2e)', () => {
 
     const transcriptEvent = waitFor<Json>(guestSocket, 'transcript:final');
     expect(
-      await emitAck(hostSocket, 'transcript:final', {
-        text: 'né, comunicação preservada.',
+      await emitAck(hostSocket, 'transcription:audio', {
+        clientSegmentId: `segment-${unique}`,
+        pcm16: Buffer.alloc(32_000),
+        sampleRate: 16_000,
+        durationMs: 1_000,
       }),
-    ).toMatchObject({ ok: true, seq: 1 });
+    ).toMatchObject({
+      ok: true,
+      seq: 1,
+      engine: 'faster-whisper',
+      model: 'small',
+    });
+    expect(asrClient.transcribe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pcm16: Buffer.alloc(32_000),
+        sampleRate: 16_000,
+        durationMs: 1_000,
+      }),
+    );
     expect(await transcriptEvent).toMatchObject({
       seq: 1,
       text: 'comunicação preservada.',

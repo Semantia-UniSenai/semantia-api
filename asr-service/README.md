@@ -49,6 +49,12 @@ Resposta:
 
 A duração declarada precisa corresponder aos bytes com tolerância de 80 ms. O corpo máximo é 960000 bytes. Erros usam códigos estáveis sem detalhes internos.
 
+`text` pode ser vazio quando a janela não produz fala reconhecível. A API NestJS trata esse resultado
+como ACK sem persistência/broadcast e mantém replay idempotente em cache efêmero por 120 s.
+
+O provider recebe cada janela integral; não há `vad_filter`. Segmentação ocorre no navegador por
+contagem de frames e controle explícito, não por classificação de voz/silêncio.
+
 ## Defaults CPU-first
 
 ```dotenv
@@ -60,7 +66,7 @@ ASR_CPU_THREADS=2
 ASR_MAX_CONCURRENCY=1
 ASR_MAX_QUEUE=4
 ASR_PRELOAD=true
-ASR_HOTWORDS="Semantia Vosk Whisper Socket.IO WebSocket TypeScript PostgreSQL"
+ASR_HOTWORDS="Semantia Socket.IO WebSocket TypeScript PostgreSQL"
 ```
 
 O modelo fica no volume `/models` por meio de `HF_HOME=/models/huggingface`. O primeiro start baixa o modelo; reinícios seguintes reutilizam o cache.

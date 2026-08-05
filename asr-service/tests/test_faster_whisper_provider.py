@@ -58,7 +58,6 @@ def test_adapter_passes_pcm_as_float_array_without_files(
         "language": "pt",
         "task": "transcribe",
         "beam_size": 5,
-        "vad_filter": True,
         "condition_on_previous_text": False,
         "hotwords": "Semantia Foyth",
     }

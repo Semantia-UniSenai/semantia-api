@@ -1,5 +1,4 @@
 import { HttpException, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import {
   OnGatewayDisconnect,
@@ -17,7 +16,6 @@ import { RoomParticipantRole } from '../rooms/entities/room.entity';
 import { RoomPermissionService } from '../rooms/room-permission.service';
 import { SessionStatus } from '../sessions/entities/live-session.entity';
 import { RoomSessionRepository } from '../sessions/repositories/live-session.repository';
-import { AppendTranscriptSegmentUseCase } from '../sessions/usecases/append-transcript-segment.usecase';
 import { EndSessionUseCase } from '../sessions/usecases/end-session.usecase';
 import { GetSessionSnapshotUseCase } from '../sessions/usecases/get-session-snapshot.usecase';
 import { SendChatMessageUseCase } from '../sessions/usecases/send-chat-message.usecase';
@@ -72,11 +70,9 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     private readonly permissions: RoomPermissionService,
     private readonly state: LiveRoomStateService,
     private readonly getSessionSnapshot: GetSessionSnapshotUseCase,
-    private readonly appendTranscriptSegment: AppendTranscriptSegmentUseCase,
     private readonly sendChatMessage: SendChatMessageUseCase,
     private readonly endSession: EndSessionUseCase,
     private readonly transcribeAudioSegment: TranscribeAudioSegmentUseCase,
-    private readonly config: ConfigService,
   ) {}
 
   afterInit(server: Server): void {
@@ -202,82 +198,6 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     return { ok: true };
   }
 
-  @SubscribeMessage('transcript:partial')
-  onTranscriptPartial(socket: LiveSocket, body: { text?: string }): Ack {
-    try {
-      const { identity, sessionId, status } = this.requireParticipant(socket);
-      if (identity.role !== RoomParticipantRole.HOST) {
-        return this.errorAck(
-          'FORBIDDEN',
-          'Only the host can publish the transcript',
-        );
-      }
-      if (status !== SessionStatus.LIVE) {
-        return this.errorAck('SESSION_READ_ONLY', 'Session is read-only');
-      }
-      const text = body?.text?.trim();
-      if (!text || text.length > 5000) {
-        return this.errorAck('BAD_REQUEST', 'Invalid transcript text');
-      }
-      socket.to(roomOf(sessionId)).emit('transcript:partial', {
-        text,
-        at: new Date(),
-      });
-      return { ok: true };
-    } catch (error) {
-      return this.toErrorAck(error);
-    }
-  }
-
-  @SubscribeMessage('transcript:final')
-  async onTranscriptFinal(
-    socket: LiveSocket,
-    body: { text?: string; clientSegmentId?: string },
-  ): Promise<Ack<{ seq: number | null; replayed: boolean }>> {
-    try {
-      const { identity, sessionId } = this.requireParticipant(socket);
-      if (this.backendAsrEnabled()) {
-        return this.errorAck(
-          'CLIENT_FINAL_DISABLED',
-          'Final transcript must be produced by backend ASR',
-        );
-      }
-      if (identity.kind !== 'account') {
-        return this.errorAck(
-          'FORBIDDEN',
-          'Guests cannot publish the transcript',
-        );
-      }
-      if (identity.role !== RoomParticipantRole.HOST) {
-        return this.errorAck(
-          'FORBIDDEN',
-          'Only the host can publish the transcript',
-        );
-      }
-      const result = await this.appendTranscriptSegment.execute(
-        identity.participantId,
-        sessionId,
-        body?.text ?? '',
-        body?.clientSegmentId,
-      );
-      if (!result) return { ok: true, seq: null, replayed: false };
-      if (result.created) {
-        this.server.to(roomOf(sessionId)).emit('transcript:final', {
-          seq: result.segment.seq,
-          text: result.segment.text,
-          at: result.segment.createdAt,
-        });
-      }
-      return {
-        ok: true,
-        seq: result.segment.seq,
-        replayed: !result.created,
-      };
-    } catch (error) {
-      return this.toErrorAck(error);
-    }
-  }
-
   @SubscribeMessage('transcription:audio')
   async onTranscriptionAudio(
     socket: LiveSocket,
@@ -294,9 +214,6 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     let clientSegmentId: string | null = null;
     try {
       const { identity, sessionId, status } = this.requireParticipant(socket);
-      if (!this.backendAsrEnabled()) {
-        return this.errorAck('ASR_DISABLED', 'Backend ASR is not enabled');
-      }
       if (
         identity.kind !== 'account' ||
         identity.role !== RoomParticipantRole.HOST
@@ -503,10 +420,6 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     error: { code: string; message: string };
   } {
     return { ok: false, error: { code, message } };
-  }
-
-  private backendAsrEnabled(): boolean {
-    return (this.config.get<string>('ASR_MODE') ?? 'backend') === 'backend';
   }
 
   private toErrorAck(error: unknown): {
