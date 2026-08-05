@@ -18,6 +18,7 @@ export const buildSessionRepo = (): jest.Mocked<RoomSessionRepository> => ({
   findByRoom: jest.fn(),
   start: jest.fn(),
   end: jest.fn(),
+  updateAudienceContext: jest.fn(),
 });
 
 export const buildRoomRepo = (): jest.Mocked<RoomRepository> => ({
@@ -52,6 +53,7 @@ export const buildSession = (over: Partial<RoomSession> = {}): RoomSession =>
     roomId: 'room-1',
     joinToken: 'tok_abc1234567890',
     status: SessionStatus.PREPARING,
+    audienceContext: null,
     createdAt: new Date('2026-07-30T12:00:00Z'),
     startedAt: null,
     endedAt: null,

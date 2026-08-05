@@ -1,3 +1,4 @@
+import { AudienceContext } from '../entities/audience-context.entity';
 import {
   RoomSession,
   RoomSessionDetails,
@@ -17,4 +18,8 @@ export abstract class RoomSessionRepository {
   abstract findByRoom(roomId: string): Promise<RoomSession[]>;
   abstract start(id: string, startedAt: Date): Promise<RoomSession>;
   abstract end(id: string, endedAt: Date): Promise<RoomSession>;
+  abstract updateAudienceContext(
+    id: string,
+    context: AudienceContext,
+  ): Promise<RoomSession>;
 }
