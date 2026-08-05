@@ -20,6 +20,7 @@ import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import type { AuthUser } from '../../shared/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../shared/guards/optional-jwt-auth.guard';
 import { AudienceContextDto } from './dtos/audience-context.dto';
+import { AudienceContext } from './entities/audience-context.entity';
 import { CreateGuestAccessDto, GuestAccessDto } from './dtos/guest-access.dto';
 import {
   ResolvedSessionDto,
@@ -93,7 +94,7 @@ export class SessionsController {
     @Param('id') sessionId: string,
     @Body() dto: AudienceContextDto,
   ): Promise<RoomSession> {
-    return this.updateContext.execute(actor.userId, sessionId, dto);
+    return this.updateContext.execute(actor.userId, sessionId, dto as AudienceContext);
   }
 
   @Post(':id/end')
