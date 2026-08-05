@@ -9,11 +9,13 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { UserRepository } from '../auth/repositories/user.repository';
+import { AsrClientError } from '../asr/asr-client';
+import { parseAudioSegment } from '../asr/audio-segment';
+import { TranscribeAudioSegmentUseCase } from '../asr/usecases/transcribe-audio-segment.usecase';
 import { RoomParticipantRole } from '../rooms/entities/room.entity';
 import { RoomPermissionService } from '../rooms/room-permission.service';
 import { SessionStatus } from '../sessions/entities/live-session.entity';
 import { RoomSessionRepository } from '../sessions/repositories/live-session.repository';
-import { AppendTranscriptSegmentUseCase } from '../sessions/usecases/append-transcript-segment.usecase';
 import { EndSessionUseCase } from '../sessions/usecases/end-session.usecase';
 import { GetSessionSnapshotUseCase } from '../sessions/usecases/get-session-snapshot.usecase';
 import { SendChatMessageUseCase } from '../sessions/usecases/send-chat-message.usecase';
@@ -53,6 +55,7 @@ const CODE_BY_STATUS: Record<number, string> = {
     origin: process.env.CORS_ORIGIN ?? '*',
     credentials: true,
   },
+  maxHttpBufferSize: 1_100_000,
 })
 export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   @WebSocketServer()
@@ -67,9 +70,9 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     private readonly permissions: RoomPermissionService,
     private readonly state: LiveRoomStateService,
     private readonly getSessionSnapshot: GetSessionSnapshotUseCase,
-    private readonly appendTranscriptSegment: AppendTranscriptSegmentUseCase,
     private readonly sendChatMessage: SendChatMessageUseCase,
     private readonly endSession: EndSessionUseCase,
+    private readonly transcribeAudioSegment: TranscribeAudioSegmentUseCase,
   ) {}
 
   afterInit(server: Server): void {
@@ -195,60 +198,78 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     return { ok: true };
   }
 
-  @SubscribeMessage('transcript:partial')
-  onTranscriptPartial(socket: LiveSocket, body: { text?: string }): Ack {
+  @SubscribeMessage('transcription:audio')
+  async onTranscriptionAudio(
+    socket: LiveSocket,
+    body: unknown,
+  ): Promise<
+    Ack<{
+      seq: number | null;
+      replayed: boolean;
+      engine: string | null;
+      model: string | null;
+      inferenceMs: number | null;
+    }>
+  > {
+    let clientSegmentId: string | null = null;
     try {
       const { identity, sessionId, status } = this.requireParticipant(socket);
-      if (!this.permissions.canManage(identity.role)) {
+      if (
+        identity.kind !== 'account' ||
+        identity.role !== RoomParticipantRole.HOST
+      ) {
         return this.errorAck(
           'FORBIDDEN',
-          'Only a host or moderator can publish the transcript',
+          'Only the host can publish the transcript',
         );
       }
       if (status !== SessionStatus.LIVE) {
         return this.errorAck('SESSION_READ_ONLY', 'Session is read-only');
       }
-      const text = body?.text?.trim();
-      if (!text || text.length > 5000) {
-        return this.errorAck('BAD_REQUEST', 'Invalid transcript text');
-      }
-      socket.to(roomOf(sessionId)).emit('transcript:partial', {
-        text,
-        at: new Date(),
-      });
-      return { ok: true };
-    } catch (error) {
-      return this.toErrorAck(error);
-    }
-  }
 
-  @SubscribeMessage('transcript:final')
-  async onTranscriptFinal(
-    socket: LiveSocket,
-    body: { text?: string },
-  ): Promise<Ack<{ seq: number | null }>> {
-    try {
-      const { identity, sessionId } = this.requireParticipant(socket);
-      if (identity.kind !== 'account') {
-        return this.errorAck(
-          'FORBIDDEN',
-          'Guests cannot publish the transcript',
-        );
-      }
-      const segment = await this.appendTranscriptSegment.execute(
+      const audio = parseAudioSegment(body);
+      clientSegmentId = audio.clientSegmentId;
+      socket.emit('transcription:status', {
+        clientSegmentId,
+        state: 'processing',
+      });
+      const result = await this.transcribeAudioSegment.execute(
         identity.participantId,
         sessionId,
-        body?.text ?? '',
+        audio,
       );
-      if (!segment) return { ok: true, seq: null };
-      this.server.to(roomOf(sessionId)).emit('transcript:final', {
-        seq: segment.seq,
-        text: segment.text,
-        at: segment.createdAt,
+      if (result.created && result.segment) {
+        this.server.to(roomOf(sessionId)).emit('transcript:final', {
+          seq: result.segment.seq,
+          text: result.segment.text,
+          at: result.segment.createdAt,
+        });
+      }
+      socket.emit('transcription:status', {
+        clientSegmentId,
+        state: 'complete',
+        engine: result.engine,
+        model: result.model,
+        inferenceMs: result.inferenceMs,
       });
-      return { ok: true, seq: segment.seq };
+      return {
+        ok: true,
+        seq: result.segment?.seq ?? null,
+        replayed: result.replayed,
+        engine: result.engine,
+        model: result.model,
+        inferenceMs: result.inferenceMs,
+      };
     } catch (error) {
-      return this.toErrorAck(error);
+      const ack = this.toErrorAck(error);
+      if (clientSegmentId) {
+        socket.emit('transcription:status', {
+          clientSegmentId,
+          state: 'failed',
+          code: ack.error.code,
+        });
+      }
+      return ack;
     }
   }
 
@@ -407,6 +428,12 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   } {
     if (error instanceof WsError) {
       return { ok: false, error: { code: error.code, message: error.message } };
+    }
+    if (error instanceof AsrClientError) {
+      return {
+        ok: false,
+        error: { code: error.code, message: error.message },
+      };
     }
     if (error instanceof HttpException) {
       return {

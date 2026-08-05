@@ -38,7 +38,6 @@ function setup(
       transcript: [],
     }),
   };
-  const append = { execute: jest.fn() };
   const chat = {
     execute: jest.fn().mockResolvedValue(
       new ChatMessage({
@@ -57,17 +56,18 @@ function setup(
       .fn()
       .mockResolvedValue({ ...details, status: SessionStatus.ENDED }),
   };
-  const gateway = new LiveGateway(
-    {} as never,
-    {} as never,
-    {} as never,
+  const transcribeAudio = { execute: jest.fn() };
+  const gateway = new (LiveGateway as any)(
+    {},
+    {},
+    {},
     new RoomPermissionService(),
     state,
-    snapshot as never,
-    append as never,
-    chat as never,
-    end as never,
-  );
+    snapshot,
+    chat,
+    end,
+    transcribeAudio,
+  ) as LiveGateway;
   const serverEmit = jest.fn();
   (gateway as unknown as { server: unknown }).server = {
     to: jest.fn(() => ({ emit: serverEmit })),
@@ -95,15 +95,122 @@ function setup(
     gateway,
     socket,
     snapshot,
-    append,
     chat,
     end,
+    transcribeAudio,
     socketEmit,
     serverEmit,
   };
 }
 
+const pcmPayload = {
+  clientSegmentId: 'segment-audio-1',
+  pcm16: Buffer.alloc(32_000),
+  sampleRate: 16_000,
+  durationMs: 1_000,
+};
+
 describe('LiveGateway generic identities', () => {
+  it('accepts host PCM and broadcasts only the backend canonical final', async () => {
+    const { gateway, socket, transcribeAudio, serverEmit, socketEmit } = setup(
+      RoomParticipantRole.HOST,
+    );
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+    const segment = {
+      id: 'segment-1',
+      sessionId: details.id,
+      clientSegmentId: 'segment-audio-1',
+      seq: 1,
+      text: 'Comunicação acessível',
+      createdAt: new Date(),
+    };
+    transcribeAudio.execute.mockResolvedValue({
+      segment,
+      created: true,
+      replayed: false,
+      engine: 'faster-whisper',
+      model: 'small',
+      inferenceMs: 42,
+    });
+
+    await expect(
+      gateway.onTranscriptionAudio(socket as never, pcmPayload),
+    ).resolves.toEqual({
+      ok: true,
+      seq: 1,
+      replayed: false,
+      engine: 'faster-whisper',
+      model: 'small',
+      inferenceMs: 42,
+    });
+    expect(transcribeAudio.execute).toHaveBeenCalledWith(
+      'account-1',
+      details.id,
+      expect.objectContaining({
+        clientSegmentId: 'segment-audio-1',
+        sampleRate: 16_000,
+      }),
+    );
+    expect(serverEmit).toHaveBeenCalledWith(
+      'transcript:final',
+      expect.objectContaining({ seq: 1, text: 'Comunicação acessível' }),
+    );
+    expect(socketEmit).toHaveBeenCalledWith(
+      'transcription:status',
+      expect.objectContaining({
+        clientSegmentId: 'segment-audio-1',
+        state: 'processing',
+      }),
+    );
+  });
+
+  it('acknowledges no-speech without broadcasting an empty transcript', async () => {
+    const { gateway, socket, transcribeAudio, serverEmit } = setup(
+      RoomParticipantRole.HOST,
+    );
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+    transcribeAudio.execute.mockResolvedValue({
+      segment: null,
+      created: false,
+      replayed: false,
+      engine: 'faster-whisper',
+      model: 'small',
+      inferenceMs: 21,
+    });
+
+    await expect(
+      gateway.onTranscriptionAudio(socket as never, pcmPayload),
+    ).resolves.toMatchObject({ ok: true, seq: null });
+    expect(serverEmit).not.toHaveBeenCalledWith(
+      'transcript:final',
+      expect.anything(),
+    );
+  });
+
+  it('rejects moderator audio before invoking backend ASR', async () => {
+    const { gateway, socket, transcribeAudio } = setup(
+      RoomParticipantRole.MODERATOR,
+    );
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+
+    await expect(
+      gateway.onTranscriptionAudio(socket as never, pcmPayload),
+    ).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'FORBIDDEN',
+        message: 'Only the host can publish the transcript',
+      },
+    });
+    expect(transcribeAudio.execute).not.toHaveBeenCalled();
+  });
+
+  it('does not expose Socket.IO handlers for client-provided transcript text', () => {
+    const { gateway } = setup(RoomParticipantRole.HOST);
+    expect(gateway).not.toHaveProperty('onTranscriptPartial');
+    expect(gateway).not.toHaveProperty('onTranscriptFinal');
+  });
+
   it.each([RoomParticipantRole.HOST, RoomParticipantRole.MODERATOR])(
     'joins a %s and exposes contextual management permission',
     async (role) => {
@@ -135,23 +242,5 @@ describe('LiveGateway generic identities', () => {
       details.id,
       'Olá',
     );
-  });
-
-  it('never lets a guest publish final transcript segments', async () => {
-    const { gateway, socket, append } = setup(
-      RoomParticipantRole.GUEST,
-      'guest',
-    );
-    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
-    await expect(
-      gateway.onTranscriptFinal(socket as never, { text: 'segredo' }),
-    ).resolves.toEqual({
-      ok: false,
-      error: {
-        code: 'FORBIDDEN',
-        message: 'Guests cannot publish the transcript',
-      },
-    });
-    expect(append.execute).not.toHaveBeenCalled();
   });
 });

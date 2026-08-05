@@ -46,6 +46,7 @@ Não anuncie itens planejados como entregues.
 | ORM | Prisma 7 com `@prisma/adapter-pg` |
 | Auth | JWT + bcryptjs |
 | Tempo real | Socket.IO |
+| ASR | Python 3.11 + FastAPI + faster-whisper small/int8 (serviço interno) |
 | Validação | class-validator / class-transformer |
 | Contrato | Swagger `/docs` e OpenAPI `/docs-json` |
 | Testes | Jest + E2E com PostgreSQL |
@@ -59,33 +60,45 @@ repositório; Prisma fica nas implementações concretas. Controllers e gateway 
 Veja [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ```text
-src/
-├── database/                 # PrismaService e módulo global
-├── modules/
-│   ├── auth/                 # signup, signin, me e JWT
-│   ├── games/                # scores e ranking
-│   ├── classes/              # turmas legadas e membros
-│   ├── sessions/             # sessões, transcript, chat e regras de acesso
-│   ├── live/                 # gateway Socket.IO /live e presença em memória
-│   └── health/               # liveness + ping real ao banco
-└── shared/                   # guards, roles, decorators, filtros e utilitários
+├── asr-service/              # FastAPI + faster-whisper CPU/int8, privado e efêmero
+└── src/
+    ├── database/             # PrismaService e módulo global
+    ├── modules/
+    │   ├── auth/             # signup, signin, me e JWT
+    │   ├── games/            # scores e ranking
+    │   ├── classes/          # turmas legadas e membros
+    │   ├── sessions/         # sessões, transcript, chat e regras de acesso
+    │   ├── asr/              # validação PCM, cliente interno, fila e final canônico
+    │   ├── live/             # gateway Socket.IO /live e presença em memória
+    │   └── health/           # liveness + ping real ao banco
+    └── shared/               # guards, roles, decorators, filtros e utilitários
 ```
 
 ## Fluxo atual da transcrição
 
 ```text
-browser: SpeechRecognition nativo ou Vosk/WebAssembly local
-       → texto parcial/final → Socket.IO → persistência do texto final
+captura PCM do navegador em janelas fixas de 5 s
+                           → PCM16 mono/16 kHz
+                           → Socket.IO autenticado (`transcription:audio`)
+                           → API: autorização + idempotência + fila por sessão
+                           → ASR interno: faster-whisper small/int8 em CPU, sem VAD
+                           → único final canônico → PostgreSQL + broadcast
 ```
 
-A captura e o reconhecimento de fala acontecem no navegador do comunicador. Em navegadores sem
-`SpeechRecognition` funcional, o frontend carrega um modelo Vosk português e executa ASR localmente
-em um Web Worker. A API recebe apenas `transcript:partial` e `transcript:final` pelo namespace
-`/live`; não recebe, armazena nem envia áudio a serviço de transcrição.
+Somente `HOST` presente em sessão `LIVE` pode enviar `transcription:audio`. O gateway aceita no máximo
+960000 bytes de PCM por segmento, valida sample rate/duração antes do ASR e limita o envelope Socket.IO
+a 1,1 MB. A fila do navegador e a fila por sessão da API têm no máximo oito segmentos; o worker ASR
+opera com uma inferência concorrente e fila própria limitada.
 
-Somente `HOST` ou `MODERATOR` publica transcript. Segmentos parciais não são persistidos. Texto
-final passa por limpeza conservadora, sequência, persistência e broadcast. Frase final composta
-apenas por ruído retorna `seq: null` e não é emitida.
+O áudio existe somente em memória e é descartado após sucesso, falha, expiração, saída ou encerramento.
+Nenhum WAV/PCM entra no PostgreSQL ou em volume. O gateway não possui handlers para texto parcial ou
+final fornecido pelo cliente; apenas o resultado do ASR interno pode ser limpo, sequenciado, persistido
+e transmitido. Resultado vazio é ACK de no-speech sem criar segmento.
+
+O mesmo `clientSegmentId` acompanha retry e replay: segmentos já persistidos são retornados antes de
+nova inferência, e duplicatas concorrentes na mesma instância compartilham a mesma Promise.
+
+A LLM/agente futuro é outro componente e consumirá o texto final; ela não substitui o ASR literal.
 
 ## Protocolo Socket.IO
 
@@ -94,7 +107,7 @@ Namespace `/live`, handshake com JWT e room `session:<id>`.
 Eventos do cliente:
 
 - `session:join`, `session:leave`, `session:end`;
-- `transcript:partial`, `transcript:final`;
+- `transcription:audio` com PCM16 binário, somente `HOST`;
 - `chat:send`;
 - `hand:raise`, `hand:lower`.
 
@@ -137,10 +150,12 @@ Variáveis:
 | `JWT_SECRET` | assinatura dos tokens; obrigatória fora de teste |
 | `CORS_ORIGIN` | origem permitida do frontend |
 | `PORT` | porta HTTP, padrão 3000 |
+| `ASR_URL` | URL privada do serviço ASR |
+| `ASR_TIMEOUT_MS` | deadline da chamada interna, padrão 45000 ms |
 
-Tokens de IA de etapas futuras devem permanecer em variáveis de ambiente do backend e nunca no
-frontend, banco, logs, docs ou prompts versionados. A transcrição literal atual não exige credencial
-de STT no backend.
+O serviço Python possui variáveis próprias documentadas em [`asr-service/README.md`](./asr-service/README.md).
+Credenciais futuras de STT/LLM devem permanecer em variáveis de ambiente do backend e nunca no
+frontend, banco, logs, docs ou prompts versionados. Nenhum fallback cloud está ativo.
 
 ## Gates
 

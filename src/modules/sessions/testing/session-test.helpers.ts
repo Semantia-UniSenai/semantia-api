@@ -35,6 +35,7 @@ export const buildRoomRepo = (): jest.Mocked<RoomRepository> => ({
 
 export const buildTranscriptRepo = (): jest.Mocked<TranscriptRepository> => ({
   append: jest.fn(),
+  findByClientSegmentId: jest.fn(),
   findBySession: jest.fn(),
   findLast: jest.fn(),
 });

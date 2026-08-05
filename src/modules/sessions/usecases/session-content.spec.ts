@@ -17,14 +17,14 @@ import { SendChatMessageUseCase } from './send-chat-message.usecase';
 describe('live room content rules', () => {
   const permissions = new RoomPermissionService();
 
-  it('lets a moderator publish a cleaned final transcript segment', async () => {
+  it('lets the host publish a cleaned final transcript segment', async () => {
     const sessions = buildSessionRepo();
     const rooms = buildRoomRepo();
     const transcripts = buildTranscriptRepo();
     sessions.findById.mockResolvedValue(
       buildSession({ status: SessionStatus.LIVE, startedAt: new Date() }),
     );
-    rooms.getParticipantRole.mockResolvedValue(RoomParticipantRole.MODERATOR);
+    rooms.getParticipantRole.mockResolvedValue(RoomParticipantRole.HOST);
     const segment = new TranscriptSegment({
       id: 'segment-1',
       sessionId: 'session-1',
@@ -32,18 +32,44 @@ describe('live room content rules', () => {
       text: 'Vamos começar.',
       createdAt: new Date(),
     });
-    transcripts.append.mockResolvedValue(segment);
+    transcripts.append.mockResolvedValue({ segment, created: true });
     const result = await new AppendTranscriptSegmentUseCase(
       sessions,
       rooms,
       permissions,
       transcripts,
-    ).execute('moderator-1', 'session-1', 'né, vamos começar.');
-    expect(result).toBe(segment);
+    ).execute('host-1', 'session-1', 'né, vamos começar.', 'segment-client-1');
+    expect(result).toEqual({ segment, created: true });
     expect(transcripts.append).toHaveBeenCalledWith(
       'session-1',
       'vamos começar.',
+      'segment-client-1',
     );
+  });
+
+  it('rejects transcript publication by a moderator', async () => {
+    const sessions = buildSessionRepo();
+    const rooms = buildRoomRepo();
+    const transcripts = buildTranscriptRepo();
+    sessions.findById.mockResolvedValue(
+      buildSession({ status: SessionStatus.LIVE }),
+    );
+    rooms.getParticipantRole.mockResolvedValue(RoomParticipantRole.MODERATOR);
+
+    await expect(
+      new AppendTranscriptSegmentUseCase(
+        sessions,
+        rooms,
+        permissions,
+        transcripts,
+      ).execute(
+        'moderator-1',
+        'session-1',
+        'texto indevido',
+        'segment-moderator-1',
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(transcripts.append).not.toHaveBeenCalled();
   });
 
   it('rejects transcript publication by a participant', async () => {

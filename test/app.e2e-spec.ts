@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { io, Socket } from 'socket.io-client';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { AsrClient } from '../src/modules/asr/asr-client';
 
 jest.setTimeout(30_000);
 
@@ -64,11 +65,22 @@ describe('generic communication rooms (e2e)', () => {
   let baseUrl: string;
   let hostSocket: Socket | undefined;
   let guestSocket: Socket | undefined;
+  const asrClient = {
+    transcribe: jest.fn().mockResolvedValue({
+      text: 'né, comunicação preservada.',
+      engine: 'faster-whisper',
+      model: 'small',
+      inferenceMs: 42,
+    }),
+  };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(AsrClient)
+      .useValue(asrClient)
+      .compile();
     app = moduleFixture.createNestApplication();
     app.useGlobalPipes(
       new ValidationPipe({
@@ -77,7 +89,7 @@ describe('generic communication rooms (e2e)', () => {
         transform: true,
       }),
     );
-    app.setGlobalPrefix('v1');
+    app.setGlobalPrefix('api');
     await app.listen(0, '127.0.0.1');
     const address = app.getHttpServer().address() as { port: number };
     baseUrl = `http://127.0.0.1:${address.port}`;
@@ -92,7 +104,7 @@ describe('generic communication rooms (e2e)', () => {
   it('opens an instant meeting, invites a guest and ends it without exposing preparation', async () => {
     const unique = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const hostSignup = await request(baseUrl)
-      .post('/v1/auth/signup')
+      .post('/api/auth/signup')
       .send({
         name: 'Ana Anfitriã',
         email: `host-${unique}@semantia.app`,
@@ -103,7 +115,7 @@ describe('generic communication rooms (e2e)', () => {
     const hostToken = hostSignup.body.accessToken as string;
 
     const meetingResponse = await request(baseUrl)
-      .post('/v1/rooms')
+      .post('/api/rooms')
       .set('Authorization', `Bearer ${hostToken}`)
       .send({})
       .expect(201);
@@ -118,7 +130,7 @@ describe('generic communication rooms (e2e)', () => {
     });
 
     await request(baseUrl)
-      .get('/v1/rooms')
+      .get('/api/rooms')
       .set('Authorization', `Bearer ${hostToken}`)
       .expect(200)
       .expect(({ body }) =>
@@ -134,18 +146,18 @@ describe('generic communication rooms (e2e)', () => {
       );
 
     await request(baseUrl)
-      .post(`/v1/rooms/${meeting.roomId}/sessions`)
+      .post(`/api/rooms/${meeting.roomId}/sessions`)
       .set('Authorization', `Bearer ${hostToken}`)
       .send({ title: 'Outra ocorrência' })
       .expect(404);
 
     await request(baseUrl)
-      .post(`/v1/sessions/${meeting.meetingId}/start`)
+      .post(`/api/sessions/${meeting.meetingId}/start`)
       .set('Authorization', `Bearer ${hostToken}`)
       .expect(404);
 
     await request(baseUrl)
-      .get('/v1/sessions/resolve')
+      .get('/api/sessions/resolve')
       .query({ token: meeting.joinToken })
       .expect(200)
       .expect(({ body }) =>
@@ -158,7 +170,7 @@ describe('generic communication rooms (e2e)', () => {
       );
 
     const guestAccess = await request(baseUrl)
-      .post('/v1/sessions/guest-access')
+      .post('/api/sessions/guest-access')
       .send({ joinToken: meeting.joinToken, displayName: 'Bruno Convidado' })
       .expect(200);
     expect(guestAccess.body.participant).toMatchObject({
@@ -195,10 +207,25 @@ describe('generic communication rooms (e2e)', () => {
 
     const transcriptEvent = waitFor<Json>(guestSocket, 'transcript:final');
     expect(
-      await emitAck(hostSocket, 'transcript:final', {
-        text: 'né, comunicação preservada.',
+      await emitAck(hostSocket, 'transcription:audio', {
+        clientSegmentId: `segment-${unique}`,
+        pcm16: Buffer.alloc(32_000),
+        sampleRate: 16_000,
+        durationMs: 1_000,
       }),
-    ).toMatchObject({ ok: true, seq: 1 });
+    ).toMatchObject({
+      ok: true,
+      seq: 1,
+      engine: 'faster-whisper',
+      model: 'small',
+    });
+    expect(asrClient.transcribe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pcm16: Buffer.alloc(32_000),
+        sampleRate: 16_000,
+        durationMs: 1_000,
+      }),
+    );
     expect(await transcriptEvent).toMatchObject({
       seq: 1,
       text: 'comunicação preservada.',
@@ -253,13 +280,13 @@ describe('generic communication rooms (e2e)', () => {
     guestSocket = undefined;
 
     await request(baseUrl)
-      .get(`/v1/sessions/${meeting.meetingId}`)
+      .get(`/api/sessions/${meeting.meetingId}`)
       .set('Authorization', `Bearer ${hostToken}`)
       .expect(200)
       .expect(({ body }) => expect(body.status).toBe('ENDED'));
 
     await request(baseUrl)
-      .get(`/v1/sessions/${meeting.meetingId}/transcript`)
+      .get(`/api/sessions/${meeting.meetingId}/transcript`)
       .set('Authorization', `Bearer ${hostToken}`)
       .expect(200)
       .expect(({ body }) =>
@@ -269,7 +296,7 @@ describe('generic communication rooms (e2e)', () => {
       );
 
     await request(baseUrl)
-      .get(`/v1/sessions/${meeting.meetingId}`)
+      .get(`/api/sessions/${meeting.meetingId}`)
       .query({ token: meeting.joinToken })
       .expect(403);
   });
