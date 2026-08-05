@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
+import { AudienceContext } from '../entities/audience-context.entity';
 import {
   RoomSession,
   RoomSessionDetails,
@@ -16,13 +17,18 @@ type SessionRow = {
   roomId: string;
   joinToken: string;
   status: string;
+  audienceContext: unknown;
   createdAt: Date;
   startedAt: Date | null;
   endedAt: Date | null;
 };
 
 const toEntity = (row: SessionRow): RoomSession =>
-  new RoomSession({ ...row, status: row.status as SessionStatus });
+  new RoomSession({
+    ...row,
+    status: row.status as SessionStatus,
+    audienceContext: (row.audienceContext as AudienceContext) ?? null,
+  });
 
 @Injectable()
 export class PrismaRoomSessionRepository extends RoomSessionRepository {
@@ -85,6 +91,18 @@ export class PrismaRoomSessionRepository extends RoomSessionRepository {
       await this.prisma.roomSession.update({
         where: { id },
         data: { status: 'ENDED', endedAt },
+      }),
+    );
+  }
+
+  async updateAudienceContext(
+    id: string,
+    context: AudienceContext,
+  ): Promise<RoomSession> {
+    return toEntity(
+      await this.prisma.roomSession.update({
+        where: { id },
+        data: { audienceContext: context as object },
       }),
     );
   }

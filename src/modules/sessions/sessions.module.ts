@@ -20,6 +20,7 @@ import { GetTranscriptUseCase } from './usecases/get-transcript.usecase';
 
 import { ResolveJoinTokenUseCase } from './usecases/resolve-join-token.usecase';
 import { SendChatMessageUseCase } from './usecases/send-chat-message.usecase';
+import { UpdateSessionContextUseCase } from './usecases/update-session-context.usecase';
 
 @Module({
   imports: [AuthModule, RoomsModule],
@@ -35,6 +36,7 @@ import { SendChatMessageUseCase } from './usecases/send-chat-message.usecase';
 
     AppendTranscriptSegmentUseCase,
     SendChatMessageUseCase,
+    UpdateSessionContextUseCase,
     { provide: RoomSessionRepository, useClass: PrismaRoomSessionRepository },
     { provide: TranscriptRepository, useClass: PrismaTranscriptRepository },
     { provide: ChatMessageRepository, useClass: PrismaChatMessageRepository },

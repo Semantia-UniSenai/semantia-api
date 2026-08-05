@@ -1,3 +1,5 @@
+import { AudienceContext } from './audience-context.entity';
+
 export enum SessionStatus {
   PREPARING = 'PREPARING',
   LIVE = 'LIVE',
@@ -10,6 +12,7 @@ export class RoomSession {
   roomId: string;
   joinToken: string;
   status: SessionStatus;
+  audienceContext: AudienceContext | null;
   createdAt: Date;
   startedAt: Date | null;
   endedAt: Date | null;
