@@ -5,6 +5,7 @@
 export class TranscriptSegment {
   id: string;
   sessionId: string;
+  clientSegmentId?: string;
   seq: number;
   text: string;
   createdAt: Date;

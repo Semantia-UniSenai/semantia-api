@@ -1,43 +1,41 @@
-import { UserRole } from '../../../shared/enums/user-role.enum';
 import type { AuthUser } from '../../../shared/guards/jwt-auth.guard';
-import { ClassRepository } from '../../classes/repositories/class.repository';
+import { RoomParticipantRole } from '../../rooms/entities/room.entity';
+import { RoomRepository } from '../../rooms/repositories/room.repository';
 import {
-  LiveSession,
-  LiveSessionDetails,
+  RoomSession,
+  RoomSessionDetails,
   SessionStatus,
 } from '../entities/live-session.entity';
 import { ChatMessageRepository } from '../repositories/chat-message.repository';
-import { LiveSessionRepository } from '../repositories/live-session.repository';
+import { RoomSessionRepository } from '../repositories/live-session.repository';
 import { TranscriptRepository } from '../repositories/transcript.repository';
 
-/**
- * Shared jest fakes for the sessions module specs. Not production code —
- * only imported from *.spec.ts files.
- */
-
-export const buildSessionRepo = (): jest.Mocked<LiveSessionRepository> => ({
+export const buildSessionRepo = (): jest.Mocked<RoomSessionRepository> => ({
   create: jest.fn(),
   findById: jest.fn(),
   findDetailsById: jest.fn(),
   findByJoinToken: jest.fn(),
-  findByClass: jest.fn(),
+  findByRoom: jest.fn(),
+  start: jest.fn(),
   end: jest.fn(),
 });
 
-export const buildClassRepo = (): jest.Mocked<ClassRepository> => ({
+export const buildRoomRepo = (): jest.Mocked<RoomRepository> => ({
   create: jest.fn(),
   findById: jest.fn(),
   findByInviteCode: jest.fn(),
-  findByTeacher: jest.fn(),
-  findByMember: jest.fn(),
+  listAccessible: jest.fn(),
   findMembers: jest.fn(),
-  isMember: jest.fn(),
+  getParticipantRole: jest.fn(),
   addMember: jest.fn(),
+  updateName: jest.fn(),
+  updateMemberRole: jest.fn(),
   removeMember: jest.fn(),
 });
 
 export const buildTranscriptRepo = (): jest.Mocked<TranscriptRepository> => ({
   append: jest.fn(),
+  findByClientSegmentId: jest.fn(),
   findBySession: jest.fn(),
   findLast: jest.fn(),
 });
@@ -47,37 +45,41 @@ export const buildChatRepo = (): jest.Mocked<ChatMessageRepository> => ({
   findLast: jest.fn(),
 });
 
-export const buildSession = (over: Partial<LiveSession> = {}): LiveSession =>
-  new LiveSession({
+export const buildSession = (over: Partial<RoomSession> = {}): RoomSession =>
+  new RoomSession({
     id: 'session-1',
-    title: 'Aula 1',
-    teacherId: 'teacher-1',
-    classId: null,
-    joinToken: 'tok_abc123',
-    status: SessionStatus.LIVE,
-    startedAt: new Date(),
+    title: 'Reunião semanal',
+    roomId: 'room-1',
+    joinToken: 'tok_abc1234567890',
+    status: SessionStatus.PREPARING,
+    createdAt: new Date('2026-07-30T12:00:00Z'),
+    startedAt: null,
     endedAt: null,
     ...over,
   });
 
 export const buildSessionDetails = (
-  over: Partial<LiveSessionDetails> = {},
-): LiveSessionDetails =>
-  new LiveSessionDetails({
+  over: Partial<RoomSessionDetails> = {},
+): RoomSessionDetails =>
+  new RoomSessionDetails({
     ...buildSession(),
-    teacherName: 'Carlos Lima',
-    className: null,
+    roomName: 'Planejamento',
+    hostId: 'host-1',
+    hostName: 'Ana Souza',
     ...over,
   });
 
-export const teacherActor: AuthUser = {
-  userId: 'teacher-1',
-  email: 'prof@semantia.app',
-  role: UserRole.PROFESSOR,
+export const hostActor: AuthUser = {
+  userId: 'host-1',
+  email: 'host@semantia.app',
 };
 
-export const studentActor: AuthUser = {
-  userId: 'student-1',
-  email: 'aluno@semantia.app',
-  role: UserRole.ALUNO,
+export const participantActor: AuthUser = {
+  userId: 'participant-1',
+  email: 'participant@semantia.app',
 };
+
+export const managerRoles = [
+  RoomParticipantRole.HOST,
+  RoomParticipantRole.MODERATOR,
+];

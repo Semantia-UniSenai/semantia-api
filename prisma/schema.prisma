@@ -7,116 +7,129 @@ datasource db {
   provider = "postgresql"
 }
 
+enum RoomMemberRole {
+  MODERATOR
+  PARTICIPANT
+}
+
+enum ParticipantRole {
+  HOST
+  MODERATOR
+  PARTICIPANT
+  GUEST
+}
+
+enum SessionStatus {
+  PREPARING
+  LIVE
+  ENDED
+}
+
 model User {
-  id           String   @id @default(uuid())
+  id           String   @id @default(cuid())
   name         String
   email        String   @unique
   passwordHash String
-  role         Role     @default(ALUNO)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  scores           Score[]
-  taughtClasses    SchoolClass[] @relation("TaughtClasses")
-  classMemberships ClassMember[]
-  taughtSessions   LiveSession[] @relation("TaughtSessions")
-  chatMessages     ChatMessage[]
+  scores          Score[]
+  hostedRooms     Room[]       @relation("RoomHost")
+  roomMemberships RoomMember[]
 
   @@map("users")
 }
 
 model Score {
-  id         String   @id @default(uuid())
-  userId     String
+  id         String   @id @default(cuid())
   gameKey    String
   points     Int
   accuracy   Float?
   durationMs Int?
   createdAt  DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([gameKey, points(sort: Desc)])
+  @@index([gameKey, points])
   @@map("scores")
 }
 
-enum Role {
-  PROFESSOR
-  ALUNO
-}
-
-enum SessionStatus {
-  LIVE
-  ENDED
-}
-
-model SchoolClass {
-  id         String   @id @default(uuid())
+model Room {
+  id         String   @id @default(cuid())
   name       String
-  teacherId  String
+  hostId     String
   inviteCode String   @unique
   createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  teacher  User          @relation("TaughtClasses", fields: [teacherId], references: [id], onDelete: Cascade)
-  members  ClassMember[]
-  sessions LiveSession[]
+  host     User          @relation("RoomHost", fields: [hostId], references: [id], onDelete: Cascade)
+  members  RoomMember[]
+  sessions RoomSession[]
 
-  @@map("classes")
+  @@index([hostId, createdAt])
+  @@map("rooms")
 }
 
-model ClassMember {
-  id       String   @id @default(uuid())
-  classId  String
+model RoomMember {
+  id       String         @id @default(cuid())
+  roomId   String
   userId   String
-  joinedAt DateTime @default(now())
+  role     RoomMemberRole @default(PARTICIPANT)
+  joinedAt DateTime       @default(now())
 
-  class SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
-  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([classId, userId])
-  @@map("class_members")
+  @@unique([roomId, userId])
+  @@index([userId, joinedAt])
+  @@map("room_members")
 }
 
-model LiveSession {
-  id        String        @id @default(uuid())
+model RoomSession {
+  id        String        @id @default(cuid())
   title     String
-  teacherId String
-  classId   String?
+  roomId    String
   joinToken String        @unique
-  status    SessionStatus @default(LIVE)
-  startedAt DateTime      @default(now())
+  status    SessionStatus @default(PREPARING)
+  createdAt DateTime      @default(now())
+  startedAt DateTime?
   endedAt   DateTime?
 
-  teacher  User               @relation("TaughtSessions", fields: [teacherId], references: [id], onDelete: Cascade)
-  class    SchoolClass?       @relation(fields: [classId], references: [id], onDelete: SetNull)
-  segments TranscriptSegment[]
-  messages ChatMessage[]
+  room       Room                @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  transcripts TranscriptSegment[]
+  messages    ChatMessage[]
 
-  @@map("live_sessions")
+  @@index([roomId, createdAt])
+  @@map("room_sessions")
 }
 
 model TranscriptSegment {
-  id        String   @id @default(uuid())
-  sessionId String
-  seq       Int
-  text      String
-  createdAt DateTime @default(now())
+  id              String   @id @default(cuid())
+  sessionId       String
+  clientSegmentId String
+  seq             Int
+  text            String
+  createdAt       DateTime @default(now())
 
-  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session RoomSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
+  @@unique([sessionId, seq])
+  @@unique([sessionId, clientSegmentId])
   @@index([sessionId, seq])
   @@map("transcript_segments")
 }
 
 model ChatMessage {
-  id        String   @id @default(uuid())
-  sessionId String
-  userId    String
-  text      String
-  createdAt DateTime @default(now())
+  id              String          @id @default(cuid())
+  sessionId       String
+  participantId   String
+  participantName String
+  participantRole ParticipantRole
+  text            String
+  createdAt       DateTime        @default(now())
 
-  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session RoomSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, createdAt])
   @@map("chat_messages")

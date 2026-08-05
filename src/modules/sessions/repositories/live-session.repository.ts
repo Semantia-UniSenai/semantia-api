@@ -1,25 +1,20 @@
 import {
-  LiveSession,
-  LiveSessionDetails,
+  RoomSession,
+  RoomSessionDetails,
 } from '../entities/live-session.entity';
 
-export interface CreateLiveSessionData {
+export interface CreateRoomSessionData {
   title: string;
-  teacherId: string;
-  classId: string | null;
+  roomId: string;
   joinToken: string;
 }
 
-/**
- * LiveSessionRepository — abstract contract for live session persistence.
- * Registered as a DI token (abstract class) so the Prisma implementation can
- * be swapped without touching business logic.
- */
-export abstract class LiveSessionRepository {
-  abstract create(data: CreateLiveSessionData): Promise<LiveSession>;
-  abstract findById(id: string): Promise<LiveSession | null>;
-  abstract findDetailsById(id: string): Promise<LiveSessionDetails | null>;
-  abstract findByJoinToken(joinToken: string): Promise<LiveSession | null>;
-  abstract findByClass(classId: string): Promise<LiveSession[]>;
-  abstract end(id: string, endedAt: Date): Promise<LiveSession>;
+export abstract class RoomSessionRepository {
+  abstract create(data: CreateRoomSessionData): Promise<RoomSession>;
+  abstract findById(id: string): Promise<RoomSession | null>;
+  abstract findDetailsById(id: string): Promise<RoomSessionDetails | null>;
+  abstract findByJoinToken(joinToken: string): Promise<RoomSession | null>;
+  abstract findByRoom(roomId: string): Promise<RoomSession[]>;
+  abstract start(id: string, startedAt: Date): Promise<RoomSession>;
+  abstract end(id: string, endedAt: Date): Promise<RoomSession>;
 }

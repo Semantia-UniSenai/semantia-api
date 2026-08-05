@@ -3,33 +3,32 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { LiveSession, SessionStatus } from '../entities/live-session.entity';
-import { LiveSessionRepository } from '../repositories/live-session.repository';
+import { RoomPermissionService } from '../../rooms/room-permission.service';
+import { RoomRepository } from '../../rooms/repositories/room.repository';
+import { RoomSession, SessionStatus } from '../entities/live-session.entity';
+import { RoomSessionRepository } from '../repositories/live-session.repository';
 
-/**
- * EndSession — the owning teacher marks a session ENDED (sets endedAt).
- * Idempotent: ending an already-ended session returns it unchanged.
- */
 @Injectable()
 export class EndSessionUseCase {
-  constructor(private readonly sessions: LiveSessionRepository) {}
+  constructor(
+    private readonly sessions: RoomSessionRepository,
+    private readonly rooms: RoomRepository,
+    private readonly permissions: RoomPermissionService,
+  ) {}
 
-  async execute(actorUserId: string, sessionId: string): Promise<LiveSession> {
+  async execute(actorUserId: string, sessionId: string): Promise<RoomSession> {
     const session = await this.sessions.findById(sessionId);
-    if (!session) {
-      throw new NotFoundException('Session not found');
-    }
-
-    if (session.teacherId !== actorUserId) {
+    if (!session) throw new NotFoundException('Session not found');
+    const role = await this.rooms.getParticipantRole(
+      session.roomId,
+      actorUserId,
+    );
+    if (!this.permissions.canManage(role)) {
       throw new ForbiddenException(
-        'Only the owning teacher can end the session',
+        'Only a host or moderator can end the session',
       );
     }
-
-    if (session.status === SessionStatus.ENDED) {
-      return session;
-    }
-
-    return this.sessions.end(sessionId, new Date());
+    if (session.status === SessionStatus.ENDED) return session;
+    return this.sessions.end(session.id, new Date());
   }
 }

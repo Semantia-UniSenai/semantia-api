@@ -1,18 +1,21 @@
 import { HttpException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
-  OnGatewayInit,
   OnGatewayDisconnect,
+  OnGatewayInit,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { UserRole } from '../../shared/enums/user-role.enum';
 import { UserRepository } from '../auth/repositories/user.repository';
+import { AsrClientError } from '../asr/asr-client';
+import { parseAudioSegment } from '../asr/audio-segment';
+import { TranscribeAudioSegmentUseCase } from '../asr/usecases/transcribe-audio-segment.usecase';
+import { RoomParticipantRole } from '../rooms/entities/room.entity';
+import { RoomPermissionService } from '../rooms/room-permission.service';
 import { SessionStatus } from '../sessions/entities/live-session.entity';
-import { MAX_TRANSCRIPT_SEGMENT_LENGTH } from '../sessions/usecases/append-transcript-segment.usecase';
-import { AppendTranscriptSegmentUseCase } from '../sessions/usecases/append-transcript-segment.usecase';
+import { RoomSessionRepository } from '../sessions/repositories/live-session.repository';
 import { EndSessionUseCase } from '../sessions/usecases/end-session.usecase';
 import { GetSessionSnapshotUseCase } from '../sessions/usecases/get-session-snapshot.usecase';
 import { SendChatMessageUseCase } from '../sessions/usecases/send-chat-message.usecase';
@@ -21,67 +24,38 @@ import {
   LiveRoomStateService,
 } from './live-room-state.service';
 
-/** Every client→server event is acknowledged with one of these. */
 export type Ack<T = unknown> =
   ({ ok: true } & T) | { ok: false; error: { code: string; message: string } };
 
-interface SocketData {
-  user?: LiveParticipant;
+interface SocketIdentity extends LiveParticipant {
+  kind: 'account' | 'guest';
   sessionId?: string;
 }
 
-// Espelho local do DefaultEventsMap do socket.io (o subpath
-// `socket.io/dist/typed-events` é bloqueado pelo exports map do pacote).
-type AnyEventsMap = Record<string, (...args: any[]) => void>;
+interface SocketData {
+  identity?: SocketIdentity;
+  sessionId?: string;
+}
 
-// O 4º genérico tipa `socket.data`; a interseção (`Socket & {...}`) não
-// funciona porque o default de `data` é `any` e engoliria o tipo.
+type AnyEventsMap = Record<string, (...args: any[]) => void>;
 type LiveSocket = Socket<AnyEventsMap, AnyEventsMap, AnyEventsMap, SocketData>;
 
+const roomOf = (sessionId: string): string => `session:${sessionId}`;
 const CODE_BY_STATUS: Record<number, string> = {
   400: 'BAD_REQUEST',
   401: 'UNAUTHORIZED',
   403: 'FORBIDDEN',
   404: 'NOT_FOUND',
-  409: 'SESSION_ENDED',
+  409: 'SESSION_READ_ONLY',
 };
 
-const roomOf = (sessionId: string): string => `session:${sessionId}`;
-
-/**
- * LiveGateway — Socket.IO namespace `/live` for the live classroom.
- *
- * Thin by design: it authenticates the handshake, tracks presence via
- * LiveRoomStateService and delegates every business decision (access,
- * ownership, persistence) to the sessions usecases — the same ones the REST
- * API uses.
- *
- * Protocol (client → server, all acked with `{ ok }` or
- * `{ ok: false, error: { code, message } }`):
- * - `session:join { sessionId, token? }` → emits `session:state` to caller,
- *   broadcasts `presence:joined`.
- * - `session:leave` → broadcasts `presence:left` (and `hand:lowered`).
- * - `transcript:partial { text }` (owner only, not persisted) → broadcasts
- *   `transcript:partial { text, at }`.
- * - `transcript:final { text }` (owner only, persisted) → broadcasts
- *   `transcript:final { seq, text, at }`.
- * - `hand:raise` / `hand:lower` (students) → broadcasts
- *   `hand:raised { userId, name, at }` / `hand:lowered { userId }`.
- * - `chat:send { text }` → broadcasts
- *   `chat:message { id, userId, name, role, text, at }`.
- * - `session:end` (owner only) → broadcasts `session:ended`, closes the room.
- *
- * Joining an ENDED session is allowed (read-only transcript replay); writes
- * (transcript/chat/hands) are rejected with code `SESSION_ENDED`.
- */
 @WebSocketGateway({
   namespace: '/live',
   cors: {
-    // Same policy as main.ts. Read from process.env because decorator
-    // metadata is evaluated before Nest's ConfigModule loads.
     origin: process.env.CORS_ORIGIN ?? '*',
     credentials: true,
   },
+  maxHttpBufferSize: 1_100_000,
 })
 export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   @WebSocketServer()
@@ -92,22 +66,17 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   constructor(
     private readonly jwtService: JwtService,
     private readonly users: UserRepository,
+    private readonly sessions: RoomSessionRepository,
+    private readonly permissions: RoomPermissionService,
     private readonly state: LiveRoomStateService,
     private readonly getSessionSnapshot: GetSessionSnapshotUseCase,
-    private readonly appendTranscriptSegment: AppendTranscriptSegmentUseCase,
     private readonly sendChatMessage: SendChatMessageUseCase,
     private readonly endSession: EndSessionUseCase,
+    private readonly transcribeAudioSegment: TranscribeAudioSegmentUseCase,
   ) {}
 
-  /**
-   * Auth no middleware do namespace — roda na fase de handshake, ANTES de o
-   * socket ser entregue e de qualquer evento ser processado. Autenticar em
-   * `handleConnection` (async) abre uma corrida: um `session:join` emitido
-   * logo no `connect` chegaria antes do JWT ser verificado.
-   * Falha → cliente recebe `connect_error` com message `UNAUTHORIZED`.
-   */
   afterInit(server: Server): void {
-    server.use((socket: LiveSocket, next: (err?: Error) => void) => {
+    server.use((socket: LiveSocket, next: (error?: Error) => void) => {
       this.authenticate(socket)
         .then(() => next())
         .catch(() => next(new Error('UNAUTHORIZED')));
@@ -117,20 +86,42 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   private async authenticate(socket: LiveSocket): Promise<void> {
     const token = (socket.handshake.auth as { token?: string })?.token;
     if (!token) throw new Error('missing token');
-
     const payload = await this.jwtService.verifyAsync<{
       sub: string;
-      email: string;
-      role?: UserRole;
+      email?: string;
+      kind?: 'account' | 'guest';
+      name?: string;
+      sessionId?: string;
     }>(token);
+
+    if (payload.kind === 'guest') {
+      if (!payload.name || !payload.sessionId)
+        throw new Error('invalid guest token');
+      const session = await this.sessions.findById(payload.sessionId);
+      if (
+        !session ||
+        (session.status !== SessionStatus.LIVE &&
+          session.status !== SessionStatus.ENDED)
+      ) {
+        throw new Error('guest session unavailable');
+      }
+      socket.data.identity = {
+        participantId: payload.sub,
+        name: payload.name,
+        role: RoomParticipantRole.GUEST,
+        kind: 'guest',
+        sessionId: payload.sessionId,
+      };
+      return;
+    }
 
     const user = await this.users.findById(payload.sub);
     if (!user) throw new Error('user not found');
-
-    socket.data.user = {
-      userId: user.id,
+    socket.data.identity = {
+      participantId: user.id,
       name: user.name,
-      role: user.role,
+      role: RoomParticipantRole.PARTICIPANT,
+      kind: 'account',
     };
   }
 
@@ -144,54 +135,57 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     body: { sessionId?: string; token?: string },
   ): Promise<Ack> {
     try {
-      const user = this.requireUser(socket);
+      const identity = this.requireIdentity(socket);
       if (!body?.sessionId || typeof body.sessionId !== 'string') {
         return this.errorAck('BAD_REQUEST', 'sessionId is required');
       }
-
-      // Shared access rule + full room snapshot in one usecase call.
       const snapshot = await this.getSessionSnapshot.execute(
-        user.userId,
+        {
+          participantId: identity.participantId,
+          kind: identity.kind,
+          sessionId: identity.sessionId,
+        },
         body.sessionId,
         body.token,
       );
-      const { session } = snapshot;
-
-      // A socket lives in at most one session room.
-      if (socket.data.sessionId && socket.data.sessionId !== session.id) {
+      identity.role = snapshot.role;
+      if (socket.data.sessionId && socket.data.sessionId !== body.sessionId) {
         this.leaveCurrentRoom(socket);
       }
-
-      const { firstJoin } = this.state.join(session.id, user, socket.id, {
-        teacherId: session.teacherId,
-        status: session.status,
-      });
-      await socket.join(roomOf(session.id));
-      socket.data.sessionId = session.id;
+      const { firstJoin } = this.state.join(
+        body.sessionId,
+        identity,
+        socket.id,
+        { status: snapshot.session.status },
+      );
+      await socket.join(roomOf(body.sessionId));
+      socket.data.sessionId = body.sessionId;
 
       socket.emit('session:state', {
-        session,
-        participants: this.state.getParticipants(session.id),
-        raisedHands: this.state.getRaisedHands(session.id),
-        chat: snapshot.chat.map((m) => ({
-          id: m.id,
-          userId: m.userId,
-          name: m.name,
-          role: m.role,
-          text: m.text,
-          at: m.createdAt,
+        session: snapshot.session,
+        canManage: snapshot.canManage,
+        self: identity,
+        participants: this.state.getParticipants(body.sessionId),
+        raisedHands: this.state.getRaisedHands(body.sessionId),
+        chat: snapshot.chat.map((message) => ({
+          id: message.id,
+          participantId: message.participantId,
+          name: message.participantName,
+          role: message.participantRole,
+          text: message.text,
+          at: message.createdAt,
         })),
-        transcript: snapshot.transcript.map((s) => ({
-          seq: s.seq,
-          text: s.text,
-          at: s.createdAt,
+        transcript: snapshot.transcript.map((segment) => ({
+          seq: segment.seq,
+          text: segment.text,
+          at: segment.createdAt,
         })),
       });
-
       if (firstJoin) {
-        socket.to(roomOf(session.id)).emit('presence:joined', { user });
+        socket.to(roomOf(body.sessionId)).emit('presence:joined', {
+          participant: identity,
+        });
       }
-
       return { ok: true };
     } catch (error) {
       return this.toErrorAck(error);
@@ -200,90 +194,97 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
 
   @SubscribeMessage('session:leave')
   onSessionLeave(socket: LiveSocket): Ack {
-    this.dropSocket(socket);
-    if (socket.data.sessionId) {
-      void socket.leave(roomOf(socket.data.sessionId));
-      socket.data.sessionId = undefined;
-    }
+    this.leaveCurrentRoom(socket);
     return { ok: true };
   }
 
-  @SubscribeMessage('transcript:partial')
-  onTranscriptPartial(socket: LiveSocket, body: { text?: string }): Ack {
+  @SubscribeMessage('transcription:audio')
+  async onTranscriptionAudio(
+    socket: LiveSocket,
+    body: unknown,
+  ): Promise<
+    Ack<{
+      seq: number | null;
+      replayed: boolean;
+      engine: string | null;
+      model: string | null;
+      inferenceMs: number | null;
+    }>
+  > {
+    let clientSegmentId: string | null = null;
     try {
-      const { user, sessionId, meta } = this.requireParticipant(socket);
-      if (meta.teacherId !== user.userId) {
+      const { identity, sessionId, status } = this.requireParticipant(socket);
+      if (
+        identity.kind !== 'account' ||
+        identity.role !== RoomParticipantRole.HOST
+      ) {
         return this.errorAck(
           'FORBIDDEN',
-          'Only the owning teacher can publish the transcript',
+          'Only the host can publish the transcript',
         );
       }
-      if (meta.status !== SessionStatus.LIVE) {
-        return this.errorAck('SESSION_ENDED', 'Session has already ended');
-      }
-      const text = body?.text?.trim();
-      if (!text || text.length > MAX_TRANSCRIPT_SEGMENT_LENGTH) {
-        return this.errorAck('BAD_REQUEST', 'Invalid transcript text');
+      if (status !== SessionStatus.LIVE) {
+        return this.errorAck('SESSION_READ_ONLY', 'Session is read-only');
       }
 
-      // Ephemeral: not persisted, just fanned out to the room.
-      socket
-        .to(roomOf(sessionId))
-        .emit('transcript:partial', { text, at: new Date() });
-      return { ok: true };
-    } catch (error) {
-      return this.toErrorAck(error);
-    }
-  }
-
-  @SubscribeMessage('transcript:final')
-  async onTranscriptFinal(
-    socket: LiveSocket,
-    body: { text?: string },
-  ): Promise<Ack<{ seq: number | null }>> {
-    try {
-      const { user, sessionId } = this.requireParticipant(socket);
-
-      // Usecase re-validates ownership + LIVE status against the database,
-      // and strips disfluencies before persisting.
-      const segment = await this.appendTranscriptSegment.execute(
-        user.userId,
-        sessionId,
-        body?.text ?? '',
-      );
-
-      // Frase que era 100% ruído ("né?"): nada persistido, nada emitido.
-      if (!segment) {
-        return { ok: true, seq: null };
-      }
-
-      this.server.to(roomOf(sessionId)).emit('transcript:final', {
-        seq: segment.seq,
-        text: segment.text,
-        at: segment.createdAt,
+      const audio = parseAudioSegment(body);
+      clientSegmentId = audio.clientSegmentId;
+      socket.emit('transcription:status', {
+        clientSegmentId,
+        state: 'processing',
       });
-      return { ok: true, seq: segment.seq };
+      const result = await this.transcribeAudioSegment.execute(
+        identity.participantId,
+        sessionId,
+        audio,
+      );
+      if (result.created && result.segment) {
+        this.server.to(roomOf(sessionId)).emit('transcript:final', {
+          seq: result.segment.seq,
+          text: result.segment.text,
+          at: result.segment.createdAt,
+        });
+      }
+      socket.emit('transcription:status', {
+        clientSegmentId,
+        state: 'complete',
+        engine: result.engine,
+        model: result.model,
+        inferenceMs: result.inferenceMs,
+      });
+      return {
+        ok: true,
+        seq: result.segment?.seq ?? null,
+        replayed: result.replayed,
+        engine: result.engine,
+        model: result.model,
+        inferenceMs: result.inferenceMs,
+      };
     } catch (error) {
-      return this.toErrorAck(error);
+      const ack = this.toErrorAck(error);
+      if (clientSegmentId) {
+        socket.emit('transcription:status', {
+          clientSegmentId,
+          state: 'failed',
+          code: ack.error.code,
+        });
+      }
+      return ack;
     }
   }
 
   @SubscribeMessage('hand:raise')
   onHandRaise(socket: LiveSocket): Ack {
     try {
-      const { user, sessionId, meta } = this.requireParticipant(socket);
-      if (meta.teacherId === user.userId) {
-        return this.errorAck('FORBIDDEN', 'The teacher cannot raise a hand');
+      const { identity, sessionId, status } = this.requireParticipant(socket);
+      if (this.permissions.canManage(identity.role)) {
+        return this.errorAck('FORBIDDEN', 'Room managers cannot raise a hand');
       }
-      if (meta.status !== SessionStatus.LIVE) {
-        return this.errorAck('SESSION_ENDED', 'Session has already ended');
+      if (status !== SessionStatus.LIVE) {
+        return this.errorAck('SESSION_READ_ONLY', 'Session is read-only');
       }
-
-      const hand = this.state.raiseHand(sessionId, user.userId);
-      if (hand) {
-        // Includes the raiser: every client keeps the same ordered list.
-        this.server.to(roomOf(sessionId)).emit('hand:raised', hand);
-      }
+      const hand = this.state.raiseHand(sessionId, identity.participantId);
+      if (hand) this.server.to(roomOf(sessionId)).emit('hand:raised', hand);
       return { ok: true };
     } catch (error) {
       return this.toErrorAck(error);
@@ -293,15 +294,14 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   @SubscribeMessage('hand:lower')
   onHandLower(socket: LiveSocket): Ack {
     try {
-      const { user, sessionId, meta } = this.requireParticipant(socket);
-      if (meta.status !== SessionStatus.LIVE) {
-        return this.errorAck('SESSION_ENDED', 'Session has already ended');
+      const { identity, sessionId, status } = this.requireParticipant(socket);
+      if (status !== SessionStatus.LIVE) {
+        return this.errorAck('SESSION_READ_ONLY', 'Session is read-only');
       }
-
-      if (this.state.lowerHand(sessionId, user.userId)) {
-        this.server
-          .to(roomOf(sessionId))
-          .emit('hand:lowered', { userId: user.userId });
+      if (this.state.lowerHand(sessionId, identity.participantId)) {
+        this.server.to(roomOf(sessionId)).emit('hand:lowered', {
+          participantId: identity.participantId,
+        });
       }
       return { ok: true };
     } catch (error) {
@@ -315,19 +315,21 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     body: { text?: string },
   ): Promise<Ack<{ id: string }>> {
     try {
-      const { user, sessionId } = this.requireParticipant(socket);
-
+      const { identity, sessionId } = this.requireParticipant(socket);
       const message = await this.sendChatMessage.execute(
-        user.userId,
+        {
+          participantId: identity.participantId,
+          name: identity.name,
+          role: identity.role,
+        },
         sessionId,
         body?.text ?? '',
       );
-
       this.server.to(roomOf(sessionId)).emit('chat:message', {
         id: message.id,
-        userId: message.userId,
-        name: message.name,
-        role: message.role,
+        participantId: message.participantId,
+        name: message.participantName,
+        role: message.participantRole,
         text: message.text,
         at: message.createdAt,
       });
@@ -340,11 +342,14 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   @SubscribeMessage('session:end')
   async onSessionEnd(socket: LiveSocket): Promise<Ack> {
     try {
-      const { user, sessionId } = this.requireParticipant(socket);
-
-      // Usecase enforces ownership and is idempotent.
-      const session = await this.endSession.execute(user.userId, sessionId);
-
+      const { identity, sessionId } = this.requireParticipant(socket);
+      if (identity.kind !== 'account') {
+        return this.errorAck('FORBIDDEN', 'Guests cannot end a session');
+      }
+      const session = await this.endSession.execute(
+        identity.participantId,
+        sessionId,
+      );
       this.state.markEnded(sessionId);
       this.server.to(roomOf(sessionId)).emit('session:ended', {
         sessionId,
@@ -353,62 +358,67 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
       this.state.closeSession(sessionId);
       this.server.in(roomOf(sessionId)).socketsLeave(roomOf(sessionId));
       socket.data.sessionId = undefined;
-
       return { ok: true };
     } catch (error) {
       return this.toErrorAck(error);
     }
   }
 
-  /** Presence bookkeeping shared by `session:leave` and disconnects. */
+  private requireIdentity(socket: LiveSocket): SocketIdentity {
+    if (!socket.data.identity) {
+      throw new WsError('UNAUTHORIZED', 'Socket is not authenticated');
+    }
+    return socket.data.identity;
+  }
+
+  private requireParticipant(socket: LiveSocket): {
+    identity: SocketIdentity;
+    sessionId: string;
+    status: SessionStatus;
+  } {
+    const identity = this.requireIdentity(socket);
+    const sessionId = socket.data.sessionId;
+    if (
+      !sessionId ||
+      !this.state.getParticipant(sessionId, identity.participantId)
+    ) {
+      throw new WsError('NOT_JOINED', 'Join a session first');
+    }
+    const meta = this.state.getMeta(sessionId);
+    if (!meta) throw new WsError('NOT_JOINED', 'Join a session first');
+    return { identity, sessionId, status: meta.status };
+  }
+
   private dropSocket(socket: LiveSocket): void {
     const result = this.state.removeSocket(socket.id);
     if (!result || !result.lastSocket) return;
-
     const room = roomOf(result.sessionId);
     if (result.hadRaisedHand) {
-      socket
-        .to(room)
-        .emit('hand:lowered', { userId: result.participant.userId });
+      socket.to(room).emit('hand:lowered', {
+        participantId: result.participant.participantId,
+      });
     }
     socket.to(room).emit('presence:left', {
-      userId: result.participant.userId,
+      participantId: result.participant.participantId,
     });
   }
 
   private leaveCurrentRoom(socket: LiveSocket): void {
+    const sessionId = socket.data.sessionId;
     this.dropSocket(socket);
-    if (socket.data.sessionId) {
-      void socket.leave(roomOf(socket.data.sessionId));
+    if (sessionId) {
+      void socket.leave(roomOf(sessionId));
       socket.data.sessionId = undefined;
     }
   }
 
-  private requireUser(socket: LiveSocket): LiveParticipant {
-    if (!socket.data.user) {
-      throw new WsError('UNAUTHORIZED', 'Socket is not authenticated');
-    }
-    return socket.data.user;
-  }
-
-  private requireParticipant(socket: LiveSocket): {
-    user: LiveParticipant;
-    sessionId: string;
-    meta: { teacherId: string; status: SessionStatus };
+  private errorAck(
+    code: string,
+    message: string,
+  ): {
+    ok: false;
+    error: { code: string; message: string };
   } {
-    const user = this.requireUser(socket);
-    const sessionId = socket.data.sessionId;
-    if (!sessionId || !this.state.getParticipant(sessionId, user.userId)) {
-      throw new WsError('NOT_JOINED', 'Join a session first');
-    }
-    const meta = this.state.getMeta(sessionId);
-    if (!meta) {
-      throw new WsError('NOT_JOINED', 'Join a session first');
-    }
-    return { user, sessionId, meta };
-  }
-
-  private errorAck(code: string, message: string): Ack {
     return { ok: false, error: { code, message } };
   }
 
@@ -419,9 +429,20 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     if (error instanceof WsError) {
       return { ok: false, error: { code: error.code, message: error.message } };
     }
+    if (error instanceof AsrClientError) {
+      return {
+        ok: false,
+        error: { code: error.code, message: error.message },
+      };
+    }
     if (error instanceof HttpException) {
-      const code = CODE_BY_STATUS[error.getStatus()] ?? 'ERROR';
-      return { ok: false, error: { code, message: error.message } };
+      return {
+        ok: false,
+        error: {
+          code: CODE_BY_STATUS[error.getStatus()] ?? 'ERROR',
+          message: error.message,
+        },
+      };
     }
     this.logger.error(
       'Unexpected gateway error',
@@ -434,7 +455,6 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   }
 }
 
-/** Internal control-flow error carrying a stable ack code. */
 class WsError extends Error {
   constructor(
     readonly code: string,

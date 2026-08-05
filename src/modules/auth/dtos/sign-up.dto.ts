@@ -1,13 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import {
-  IsEmail,
-  IsEnum,
-  IsOptional,
-  IsString,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
-import { UserRole } from '../../../shared/enums/user-role.enum';
+import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class SignUpDto {
   @ApiProperty({ example: 'Ana Souza', description: 'Full display name' })
@@ -25,15 +17,4 @@ export class SignUpDto {
   @MinLength(6)
   @MaxLength(72)
   password: string;
-
-  @ApiProperty({
-    required: false,
-    enum: UserRole,
-    enumName: 'UserRole',
-    default: UserRole.ALUNO,
-    description: 'Account role. Defaults to ALUNO when omitted.',
-  })
-  @IsOptional()
-  @IsEnum(UserRole)
-  role?: UserRole;
 }
