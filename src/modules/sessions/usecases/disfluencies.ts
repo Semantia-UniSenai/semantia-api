@@ -10,11 +10,9 @@
  */
 
 /**
- * Vícios de fala como fontes de regex (unidas com `|` em um único padrão).
- * Cada entrada casa entre limites de palavra, sem diferenciar maiúsculas.
+ * Hesitações vocalizadas que não carregam conteúdo semântico.
  */
-export const FILLER_PATTERNS: readonly string[] = [
-  // Hesitações vocalizadas: "ééé", "ãh", "hã", "hum", "humm", "ahn", "ehn"…
+const HESITATION_PATTERNS: readonly string[] = [
   'é{2,}',
   'ã+h*',
   'hã+',
@@ -23,35 +21,116 @@ export const FILLER_PATTERNS: readonly string[] = [
   'uhum+',
   'ahn+',
   'ehn+',
-  // Marcadores de vício que nunca carregam conteúdo sozinhos.
+];
+
+/**
+ * Vocabulário público da estratégia. Marcadores compostos só são removidos
+ * quando a pontuação prova seu uso discursivo; não entram na regex geral.
+ */
+export const FILLER_PATTERNS: readonly string[] = [
+  ...HESITATION_PATTERNS,
   'né',
   'tá ligado',
   'tipo assim',
 ];
 
-// `\b` do JS é ASCII e falha ao lado de letras acentuadas ("né", "ééé") —
-// os limites de palavra aqui são lookarounds unicode.
-const FILLER_REGEX = new RegExp(
-  `(?<!\\p{L})(?:${FILLER_PATTERNS.join('|')})(?!\\p{L})`,
+const HESITATION_REGEX = new RegExp(
+  `(?<!\\p{L})(?:${HESITATION_PATTERNS.join('|')})(?!\\p{L})(?:[.,!?;:]+)?`,
   'giu',
 );
 
+// `né` minúsculo é marcador; `Né` no meio da frase pode ser nome próprio.
+const LOWERCASE_NE_REGEX = /(?<!\p{L})né(?!\p{L})(?:[.,!?;:]+)?/gu;
+const INITIAL_CAPITALIZED_NE_REGEX = /^Né\s*[,!?;:]+\s*/u;
+
+// Expressões ambíguas só caem quando isoladas pela pontuação como marcadores.
+const INITIAL_DISCOURSE_MARKER_REGEX =
+  /^(?:tipo assim|tá ligado)\s*[,!?;:]+\s*/iu;
+const PUNCTUATED_DISCOURSE_MARKER_REGEX =
+  /(?<=[,!?;:])\s*(?:tipo assim|tá ligado)\s*[,!?;:]+\s*/giu;
+
 // Gagueira/repetição imediata da mesma palavra: "o o o professor" → "o professor".
 const REPEATED_WORD_REGEX = /(?<!\p{L})(\p{L}+)(?:\s+\1(?!\p{L}))+/giu;
+const NUMBER_WORDS = new Set([
+  'zero',
+  'um',
+  'uma',
+  'dois',
+  'duas',
+  'três',
+  'quatro',
+  'cinco',
+  'seis',
+  'sete',
+  'oito',
+  'nove',
+  'dez',
+  'onze',
+  'doze',
+  'treze',
+  'catorze',
+  'quatorze',
+  'quinze',
+  'dezesseis',
+  'dezessete',
+  'dezoito',
+  'dezenove',
+  'vinte',
+  'trinta',
+  'quarenta',
+  'cinquenta',
+  'sessenta',
+  'setenta',
+  'oitenta',
+  'noventa',
+  'cem',
+  'cento',
+  'mil',
+  'milhão',
+  'milhões',
+]);
 
 // Pontuação órfã deixada pela remoção: " ," → ",", ",," → ",".
 const ORPHAN_SPACE_REGEX = /\s+([.,!?;:])/g;
 const DOUBLED_PUNCT_REGEX = /([.,!?;:])(?:\s*[,;:])+/g;
 const LEADING_ORPHAN_PUNCT_REGEX = /^[,!?;:]+\s*/;
 
+export const CURRENT_TRANSCRIPT_CLEANING_STRATEGY =
+  'pt-br-conservative-v1' as const;
+
+export interface CanonicalTranscript {
+  text: string;
+  cleaningStrategyVersion: typeof CURRENT_TRANSCRIPT_CLEANING_STRATEGY;
+}
+
+/**
+ * Produz o único texto literal canônico e identifica a estratégia determinística
+ * usada. O texto reconhecido pelo ASR continua restrito à memória da chamada.
+ */
+export function cleanCanonicalTranscript(text: string): CanonicalTranscript {
+  return {
+    text: stripDisfluencies(text),
+    cleaningStrategyVersion: CURRENT_TRANSCRIPT_CLEANING_STRATEGY,
+  };
+}
+
 /**
  * Remove vícios e repetições de `text`. Pode devolver string vazia quando a
  * frase inteira era ruído ("né?") — o chamador decide não persistir nesse caso.
  */
 export function stripDisfluencies(text: string): string {
-  const clean = text
-    .replace(FILLER_REGEX, '')
-    .replace(REPEATED_WORD_REGEX, '$1')
+  const withoutUnambiguousFillers = text
+    .replace(HESITATION_REGEX, '')
+    .replace(LOWERCASE_NE_REGEX, '')
+    .replace(/^\s+/u, '')
+    .replace(INITIAL_CAPITALIZED_NE_REGEX, '');
+
+  const clean = withoutUnambiguousFillers
+    .replace(INITIAL_DISCOURSE_MARKER_REGEX, '')
+    .replace(PUNCTUATED_DISCOURSE_MARKER_REGEX, ' ')
+    .replace(REPEATED_WORD_REGEX, (repetition: string, word: string) =>
+      NUMBER_WORDS.has(word.toLocaleLowerCase('pt-BR')) ? repetition : word,
+    )
     .replace(ORPHAN_SPACE_REGEX, '$1')
     .replace(DOUBLED_PUNCT_REGEX, '$1')
     .replace(LEADING_ORPHAN_PUNCT_REGEX, '')
