@@ -113,6 +113,9 @@ export class TranscribeAudioSegmentUseCase {
           normalizedText,
           audio.clientSegmentId,
         );
+        if (!appended) {
+          this.rememberNoSpeech(sessionId, audio.clientSegmentId, result);
+        }
         return {
           segment: appended?.segment ?? null,
           created: appended?.created ?? false,

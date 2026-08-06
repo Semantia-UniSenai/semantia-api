@@ -15,6 +15,7 @@ export abstract class TranscriptRepository {
     sessionId: string,
     text: string,
     clientSegmentId: string,
+    cleaningStrategyVersion: string,
   ): Promise<AppendTranscriptResult>;
   abstract findByClientSegmentId(
     sessionId: string,
