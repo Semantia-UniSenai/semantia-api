@@ -66,8 +66,13 @@ ASR_CPU_THREADS=2
 ASR_MAX_CONCURRENCY=1
 ASR_MAX_QUEUE=4
 ASR_PRELOAD=true
-ASR_HOTWORDS="Semantia Socket.IO WebSocket TypeScript PostgreSQL"
+ASR_HOTWORDS=
 ```
+
+`ASR_HOTWORDS` é vazio por padrão. Hotwords são um viés do decoder, não um dicionário
+inofensivo: em janelas com silêncio, ruído ou fala ambígua podem induzir termos que não foram
+ditos. Só configure esse campo de forma explícita, com validação no áudio-alvo; a operação
+padrão da Semantia não injeta vocabulário técnico no modelo.
 
 O modelo fica no volume `/models` por meio de `HF_HOME=/models/huggingface`. O primeiro start baixa o modelo; reinícios seguintes reutilizam o cache.
 
