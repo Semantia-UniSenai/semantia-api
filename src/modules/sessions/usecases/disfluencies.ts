@@ -39,13 +39,13 @@ const HESITATION_REGEX = new RegExp(
   'giu',
 );
 
-// `né` minúsculo é marcador; `Né` no meio da frase pode ser nome próprio.
 const LOWERCASE_NE_REGEX = /(?<!\p{L})né(?!\p{L})(?:[.,!?;:]+)?/gu;
-const INITIAL_CAPITALIZED_NE_REGEX = /^Né\s*[,!?;:]+\s*/u;
 
-// Expressões ambíguas só caem quando isoladas pela pontuação como marcadores.
+// Expressões ambíguas e `Né` só caem no início quando a pontuação prova
+// seu uso discursivo. O grupo externo consome marcadores empilhados em uma
+// única passagem, sem loop de substituição.
 const INITIAL_DISCOURSE_MARKER_REGEX =
-  /^(?:tipo assim|tá ligado)\s*[,!?;:]+\s*/iu;
+  /^(?:(?:Né|tipo assim|tá ligado)\s*[,!?;:]+\s*)+/iu;
 const PUNCTUATED_DISCOURSE_MARKER_REGEX =
   /(?<=[,!?;:])\s*(?:tipo assim|tá ligado)\s*[,!?;:]+\s*/giu;
 
@@ -122,8 +122,7 @@ export function stripDisfluencies(text: string): string {
   const withoutUnambiguousFillers = text
     .replace(HESITATION_REGEX, '')
     .replace(LOWERCASE_NE_REGEX, '')
-    .replace(/^\s+/u, '')
-    .replace(INITIAL_CAPITALIZED_NE_REGEX, '');
+    .replace(/^\s+/u, '');
 
   const clean = withoutUnambiguousFillers
     .replace(INITIAL_DISCOURSE_MARKER_REGEX, '')

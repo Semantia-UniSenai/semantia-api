@@ -26,6 +26,7 @@ export interface TranscribedAudioSegment {
 }
 
 const NO_SPEECH_REPLAY_TTL_MS = 120_000;
+const NO_SPEECH_REPLAY_MAX_ENTRIES = 512;
 
 type NoSpeechReplay = Pick<
   TranscribedAudioSegment,
@@ -133,9 +134,7 @@ export class TranscribeAudioSegmentUseCase {
     clientSegmentId: string,
   ): TranscribedAudioSegment | null {
     const now = Date.now();
-    for (const [key, value] of this.noSpeechReplays) {
-      if (value.expiresAt <= now) this.noSpeechReplays.delete(key);
-    }
+    this.pruneNoSpeechReplays(now);
     const replay = this.noSpeechReplays.get(`${sessionId}:${clientSegmentId}`);
     if (!replay) return null;
     return {
@@ -153,10 +152,26 @@ export class TranscribeAudioSegmentUseCase {
     clientSegmentId: string,
     result: Pick<TranscribedAudioSegment, 'engine' | 'model' | 'inferenceMs'>,
   ): void {
-    this.noSpeechReplays.set(`${sessionId}:${clientSegmentId}`, {
+    const now = Date.now();
+    this.pruneNoSpeechReplays(now);
+    const key = `${sessionId}:${clientSegmentId}`;
+    this.noSpeechReplays.delete(key);
+    if (this.noSpeechReplays.size >= NO_SPEECH_REPLAY_MAX_ENTRIES) {
+      for (const oldestKey of this.noSpeechReplays.keys()) {
+        this.noSpeechReplays.delete(oldestKey);
+        break;
+      }
+    }
+    this.noSpeechReplays.set(key, {
       ...result,
-      expiresAt: Date.now() + NO_SPEECH_REPLAY_TTL_MS,
+      expiresAt: now + NO_SPEECH_REPLAY_TTL_MS,
     });
+  }
+
+  private pruneNoSpeechReplays(now: number): void {
+    for (const [key, value] of this.noSpeechReplays) {
+      if (value.expiresAt <= now) this.noSpeechReplays.delete(key);
+    }
   }
 
   private replayed(segment: TranscriptSegment): TranscribedAudioSegment {

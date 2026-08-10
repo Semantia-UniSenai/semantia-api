@@ -21,6 +21,11 @@ export const REMOVAL_CASES: readonly TranscriptCleaningCase[] = [
     expected: 'isso é importante, pessoal',
   },
   {
+    name: 'remove marcadores empilhados no início sem loop',
+    input: 'Né, tipo assim, tá ligado, precisamos revisar',
+    expected: 'precisamos revisar',
+  },
+  {
     name: 'remove hesitação alongada e a pontuação anexada',
     input: 'ééé... comunicação acessível',
     expected: 'comunicação acessível',
