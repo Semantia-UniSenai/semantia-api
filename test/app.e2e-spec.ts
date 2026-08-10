@@ -229,7 +229,33 @@ describe('generic communication rooms (e2e)', () => {
     expect(await transcriptEvent).toMatchObject({
       seq: 1,
       text: 'comunicação preservada.',
+      cleaningStrategyVersion: 'pt-br-conservative-v1',
     });
+
+    const discardedEvents: Json[] = [];
+    guestSocket.on('transcript:final', (event: Json) =>
+      discardedEvents.push(event),
+    );
+    asrClient.transcribe.mockResolvedValueOnce({
+      text: 'né? ééé...',
+      engine: 'faster-whisper',
+      model: 'small',
+      inferenceMs: 17,
+    });
+    const discardedAudio = {
+      clientSegmentId: `discarded-${unique}`,
+      pcm16: Buffer.alloc(32_000),
+      sampleRate: 16_000,
+      durationMs: 1_000,
+    };
+    expect(
+      await emitAck(hostSocket, 'transcription:audio', discardedAudio),
+    ).toMatchObject({ ok: true, seq: null, replayed: false });
+    const asrCallsAfterDiscard = asrClient.transcribe.mock.calls.length;
+    expect(
+      await emitAck(hostSocket, 'transcription:audio', discardedAudio),
+    ).toMatchObject({ ok: true, seq: null, replayed: true });
+    expect(asrClient.transcribe).toHaveBeenCalledTimes(asrCallsAfterDiscard);
 
     const chatEvent = waitFor<Json>(hostSocket, 'chat:message');
     expect(
@@ -291,9 +317,14 @@ describe('generic communication rooms (e2e)', () => {
       .expect(200)
       .expect(({ body }) =>
         expect(body).toEqual([
-          expect.objectContaining({ seq: 1, text: 'comunicação preservada.' }),
+          expect.objectContaining({
+            seq: 1,
+            text: 'comunicação preservada.',
+            cleaningStrategyVersion: 'pt-br-conservative-v1',
+          }),
         ]),
       );
+    expect(discardedEvents).toEqual([]);
 
     await request(baseUrl)
       .get(`/api/sessions/${meeting.meetingId}`)
