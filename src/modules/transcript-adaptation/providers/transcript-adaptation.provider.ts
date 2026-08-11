@@ -9,6 +9,7 @@ export const TranscriptAdaptationProviderErrorCode = {
   TIMEOUT: 'TIMEOUT',
   RATE_LIMIT: 'RATE_LIMIT',
   CAPACITY: 'CAPACITY',
+  CIRCUIT_OPEN: 'CIRCUIT_OPEN',
   PROVIDER_ERROR: 'PROVIDER_ERROR',
   INVALID_RESPONSE: 'INVALID_RESPONSE',
 } as const;
@@ -24,6 +25,18 @@ export class TranscriptAdaptationProviderError extends Error {
   ) {
     super(code);
     this.name = 'TranscriptAdaptationProviderError';
+  }
+}
+
+export class TranscriptAdaptationRetryError extends TranscriptAdaptationProviderError {
+  constructor(
+    code: TranscriptAdaptationProviderErrorCode,
+    retryable: boolean,
+    readonly attemptCount: number,
+    retryAfterMs?: number,
+  ) {
+    super(code, retryable, retryAfterMs);
+    this.name = 'TranscriptAdaptationRetryError';
   }
 }
 

@@ -152,10 +152,30 @@ Variáveis:
 | `PORT` | porta HTTP, padrão 3000 |
 | `ASR_URL` | URL privada do serviço ASR |
 | `ASR_TIMEOUT_MS` | deadline da chamada interna, padrão 45000 ms |
+| `TRANSCRIPT_ADAPTATION_ENABLED` | habilita a adaptação derivada; padrão `false` |
+| `TRANSCRIPT_ADAPTATION_PROVIDER` | `disabled`, `fake` ou `groq` |
+| `TRANSCRIPT_ADAPTATION_MODEL` | modelo do adapter, configurável por ambiente |
+| `TRANSCRIPT_ADAPTATION_TIMEOUT_MS` | deadline total incluindo retry, padrão 2500 ms |
+| `TRANSCRIPT_ADAPTATION_MAX_RETRIES` | repetições transitórias; máximo 1 |
+| `TRANSCRIPT_ADAPTATION_MAX_CONCURRENCY` | chamadas simultâneas globais, padrão 2 |
+| `TRANSCRIPT_ADAPTATION_MAX_QUEUE` | jobs em espera, padrão 32 |
+| `GROQ_API_KEY` | segredo backend da Groq; nunca exposto em health/OpenAPI/logs |
 
 O serviço Python possui variáveis próprias documentadas em [`asr-service/README.md`](./asr-service/README.md).
-Credenciais futuras de STT/LLM devem permanecer em variáveis de ambiente do backend e nunca no
-frontend, banco, logs, docs ou prompts versionados. Nenhum fallback cloud está ativo.
+Credenciais de STT/LLM devem permanecer em variáveis de ambiente do backend e nunca no frontend,
+banco, logs, docs ou prompts versionados. Nenhum fallback cloud silencioso está ativo.
+
+### Provider experimental de adaptação
+
+A camada do Card 08 trata a adaptação como artefato derivado. O literal final continua soberano e a
+falha da IA nunca deve bloqueá-lo ou sobrescrevê-lo. `fake` existe para TDD determinístico; `groq` usa
+Structured Outputs estrito quando o modelo configurado suporta a capability. O backend ainda valida
+schema, números, datas, entidades, negações, modalidade e conteúdo urgente independentemente do modelo.
+
+Somente texto final canônico, idioma e contexto mínimo/versionado podem chegar ao provider. Áudio, PCM,
+ASR bruto, segmentos parciais, JWT, `joinToken`, usuário e histórico não entram no contrato. Não existe
+fallback silencioso entre fornecedores: erro, timeout, circuito aberto ou saída reprovada materializam o
+literal como fallback auditável.
 
 ## Gates
 
