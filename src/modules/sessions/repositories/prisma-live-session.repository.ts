@@ -102,7 +102,7 @@ export class PrismaRoomSessionRepository extends RoomSessionRepository {
     return toEntity(
       await this.prisma.roomSession.update({
         where: { id },
-        data: { audienceContext: context as object },
+        data: { audienceContext: { ...context } },
       }),
     );
   }
