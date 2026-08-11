@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '../../../../generated/prisma';
 import { PrismaService } from '../../../database/prisma.service';
-import { AudienceContext } from '../../sessions/entities/audience-context.entity';
+import type { AudienceContext } from '../../sessions/entities/audience-context.entity';
 import {
   TranscriptAdaptation,
   TranscriptAdaptationFailureCode,
@@ -40,7 +41,7 @@ const toEntity = (row: AdaptationRow): TranscriptAdaptation =>
     status: row.status as TranscriptAdaptation['status'],
     failureCode:
       (row.failureCode as TranscriptAdaptation['failureCode']) ?? null,
-    contextSnapshot: row.contextSnapshot as AudienceContext,
+    contextSnapshot: row.contextSnapshot as AudienceContext | null,
   });
 
 @Injectable()
@@ -57,7 +58,9 @@ export class PrismaTranscriptAdaptationRepository extends TranscriptAdaptationRe
         where: { transcriptSegmentId: data.transcriptSegmentId },
         create: {
           ...data,
-          contextSnapshot: { ...data.contextSnapshot },
+          contextSnapshot: data.contextSnapshot
+            ? { ...data.contextSnapshot }
+            : Prisma.JsonNull,
         },
         update: {},
       }),

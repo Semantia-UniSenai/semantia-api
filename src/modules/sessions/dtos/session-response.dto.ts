@@ -65,6 +65,35 @@ export class ResolvedSessionDto {
   status: SessionStatus;
 }
 
+export class TranscriptSegmentAdaptationDto {
+  @ApiProperty({ example: 'Vamos revisar as entregas seguintes.' })
+  text: string;
+
+  @ApiProperty({ enum: ['succeeded', 'fallback', 'bypassed'] })
+  status: 'succeeded' | 'fallback' | 'bypassed';
+
+  @ApiProperty({ nullable: true, example: null })
+  failureCode: string | null;
+
+  @ApiProperty({ example: true })
+  automatic: true;
+
+  @ApiProperty({ example: 2 })
+  contextVersion: number;
+
+  @ApiProperty({ example: 'pt-br-accessible-v1' })
+  promptVersion: string;
+
+  @ApiProperty({ example: 'groq' })
+  provider: string;
+
+  @ApiProperty({ example: 'openai/gpt-oss-20b' })
+  model: string;
+
+  @ApiProperty()
+  at: Date;
+}
+
 export class TranscriptSegmentDto {
   @ApiProperty({ format: 'uuid' })
   id: string;
@@ -80,6 +109,13 @@ export class TranscriptSegmentDto {
 
   @ApiProperty({ example: 'pt-br-conservative-v1' })
   cleaningStrategyVersion: string;
+
+  @ApiProperty({
+    type: TranscriptSegmentAdaptationDto,
+    nullable: true,
+    required: false,
+  })
+  adaptation?: TranscriptSegmentAdaptationDto | null;
 
   @ApiProperty()
   createdAt: Date;

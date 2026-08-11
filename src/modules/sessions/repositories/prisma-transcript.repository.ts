@@ -6,6 +6,51 @@ import {
   TranscriptRepository,
 } from './transcript.repository';
 
+type AdaptationRow = {
+  text: string | null;
+  status: string;
+  failureCode: string | null;
+  contextVersion: number;
+  promptVersion: string;
+  provider: string;
+  model: string;
+  updatedAt: Date;
+  completedAt: Date | null;
+};
+
+type TranscriptRow = Omit<
+  ConstructorParameters<typeof TranscriptSegment>[0],
+  'adaptation'
+> & {
+  adaptation?: AdaptationRow | null;
+};
+
+const toEntity = (row: TranscriptRow): TranscriptSegment => {
+  const adaptation = row.adaptation;
+  return new TranscriptSegment({
+    ...row,
+    adaptation:
+      adaptation && adaptation.status !== 'PENDING'
+        ? {
+            text: adaptation.text ?? row.text,
+            status:
+              adaptation.status === 'SUCCEEDED'
+                ? 'succeeded'
+                : adaptation.status === 'BYPASSED'
+                  ? 'bypassed'
+                  : 'fallback',
+            failureCode: adaptation.failureCode,
+            automatic: true,
+            contextVersion: adaptation.contextVersion,
+            promptVersion: adaptation.promptVersion,
+            provider: adaptation.provider,
+            model: adaptation.model,
+            at: adaptation.completedAt ?? adaptation.updatedAt,
+          }
+        : null,
+  });
+};
+
 /** Prisma-backed TranscriptRepository. */
 @Injectable()
 export class PrismaTranscriptRepository extends TranscriptRepository {
@@ -29,7 +74,7 @@ export class PrismaTranscriptRepository extends TranscriptRepository {
         where: { sessionId_clientSegmentId: { sessionId, clientSegmentId } },
       });
       if (existing) {
-        return { segment: new TranscriptSegment(existing), created: false };
+        return { segment: toEntity(existing), created: false };
       }
 
       try {
@@ -48,7 +93,7 @@ export class PrismaTranscriptRepository extends TranscriptRepository {
             },
           });
         });
-        return { segment: new TranscriptSegment(row), created: true };
+        return { segment: toEntity(row), created: true };
       } catch (error) {
         if (!this.isUniqueConflict(error)) throw error;
       }
@@ -58,7 +103,7 @@ export class PrismaTranscriptRepository extends TranscriptRepository {
       where: { sessionId_clientSegmentId: { sessionId, clientSegmentId } },
     });
     if (existing) {
-      return { segment: new TranscriptSegment(existing), created: false };
+      return { segment: toEntity(existing), created: false };
     }
     throw new Error('Could not allocate transcript sequence');
   }
@@ -78,16 +123,18 @@ export class PrismaTranscriptRepository extends TranscriptRepository {
   ): Promise<TranscriptSegment | null> {
     const row = await this.prisma.transcriptSegment.findUnique({
       where: { sessionId_clientSegmentId: { sessionId, clientSegmentId } },
+      include: { adaptation: true },
     });
-    return row ? new TranscriptSegment(row) : null;
+    return row ? toEntity(row) : null;
   }
 
   async findBySession(sessionId: string): Promise<TranscriptSegment[]> {
     const rows = await this.prisma.transcriptSegment.findMany({
       where: { sessionId },
       orderBy: { seq: 'asc' },
+      include: { adaptation: true },
     });
-    return rows.map((r) => new TranscriptSegment(r));
+    return rows.map(toEntity);
   }
 
   async findLast(
@@ -98,7 +145,8 @@ export class PrismaTranscriptRepository extends TranscriptRepository {
       where: { sessionId },
       orderBy: { seq: 'desc' },
       take: limit,
+      include: { adaptation: true },
     });
-    return rows.reverse().map((r) => new TranscriptSegment(r));
+    return rows.reverse().map(toEntity);
   }
 }

@@ -1,4 +1,4 @@
-import { AudienceContext } from '../../sessions/entities/audience-context.entity';
+import type { AudienceContext } from '../../sessions/entities/audience-context.entity';
 import {
   TranscriptAdaptation,
   TranscriptAdaptationFailureCode,
@@ -8,7 +8,7 @@ import {
 export type CreatePendingAdaptationData = {
   transcriptSegmentId: string;
   contextVersion: number;
-  contextSnapshot: AudienceContext;
+  contextSnapshot: AudienceContext | null;
   promptVersion: string;
   provider: string;
   model: string;

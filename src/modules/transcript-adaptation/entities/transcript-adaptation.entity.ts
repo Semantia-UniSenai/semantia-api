@@ -1,4 +1,4 @@
-import { AudienceContext } from '../../sessions/entities/audience-context.entity';
+import type { AudienceContext } from '../../sessions/entities/audience-context.entity';
 
 export const TranscriptAdaptationStatus = {
   PENDING: 'PENDING',
@@ -36,7 +36,7 @@ export class TranscriptAdaptation {
   status: TranscriptAdaptationStatus;
   failureCode: TranscriptAdaptationFailureCode | null;
   contextVersion: number;
-  contextSnapshot: AudienceContext;
+  contextSnapshot: AudienceContext | null;
   promptVersion: string;
   provider: string;
   model: string;

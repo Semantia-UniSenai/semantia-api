@@ -15,6 +15,7 @@ const details = new RoomSessionDetails({
   joinToken: 'tok_abc1234567890',
   status: SessionStatus.LIVE,
   audienceContext: null,
+  audienceContextVersion: 0,
   createdAt: new Date(),
   startedAt: new Date(),
   endedAt: null,
@@ -58,6 +59,19 @@ function setup(
       .mockResolvedValue({ ...details, status: SessionStatus.ENDED }),
   };
   const transcribeAudio = { execute: jest.fn() };
+  const adaptTranscript = {
+    enqueue: jest.fn().mockResolvedValue({
+      event: {
+        segmentId: 'segment-1',
+        sessionId: details.id,
+        seq: 1,
+        adaptation: {
+          text: 'Comunicação acessível',
+          status: 'fallback',
+        },
+      },
+    }),
+  };
   const gateway = new (LiveGateway as any)(
     {},
     {},
@@ -68,6 +82,7 @@ function setup(
     chat,
     end,
     transcribeAudio,
+    adaptTranscript,
   ) as LiveGateway;
   const serverEmit = jest.fn();
   (gateway as unknown as { server: unknown }).server = {
@@ -99,6 +114,7 @@ function setup(
     chat,
     end,
     transcribeAudio,
+    adaptTranscript,
     socketEmit,
     serverEmit,
   };
@@ -170,6 +186,88 @@ describe('LiveGateway generic identities', () => {
     );
   });
 
+  it('emite literal antes de agendar e publica a adaptação sem bloquear o ACK', async () => {
+    const { gateway, socket, transcribeAudio, adaptTranscript, serverEmit } =
+      setup(RoomParticipantRole.HOST);
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+    const segment = {
+      id: 'segment-1',
+      sessionId: details.id,
+      clientSegmentId: 'segment-audio-1',
+      seq: 1,
+      text: 'A pauta será apresentada.',
+      cleaningStrategyVersion: 'pt-br-conservative-v1',
+      createdAt: new Date(),
+    };
+    transcribeAudio.execute.mockResolvedValue({
+      segment,
+      created: true,
+      replayed: false,
+      engine: 'faster-whisper',
+      model: 'small',
+      inferenceMs: 42,
+    });
+    let completeAdaptation!: (value: unknown) => void;
+    adaptTranscript.enqueue.mockImplementation(() => {
+      expect(serverEmit).toHaveBeenCalledWith(
+        'transcript:final',
+        expect.objectContaining({ id: segment.id, seq: segment.seq }),
+      );
+      return new Promise((resolve) => {
+        completeAdaptation = resolve;
+      });
+    });
+
+    await expect(
+      gateway.onTranscriptionAudio(socket as never, pcmPayload),
+    ).resolves.toMatchObject({ ok: true, seq: 1 });
+    expect(serverEmit).not.toHaveBeenCalledWith(
+      'transcript:adapted',
+      expect.anything(),
+    );
+
+    const event = {
+      segmentId: segment.id,
+      sessionId: segment.sessionId,
+      seq: segment.seq,
+      adaptation: {
+        text: 'A pauta será mostrada.',
+        status: 'succeeded',
+      },
+    };
+    completeAdaptation({ event });
+    await Promise.resolve();
+
+    expect(serverEmit).toHaveBeenCalledWith('transcript:adapted', event);
+  });
+
+  it('não agenda adaptação para replay do mesmo segmento', async () => {
+    const { gateway, socket, transcribeAudio, adaptTranscript } = setup(
+      RoomParticipantRole.HOST,
+    );
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+    transcribeAudio.execute.mockResolvedValue({
+      segment: {
+        id: 'segment-1',
+        sessionId: details.id,
+        clientSegmentId: 'segment-audio-1',
+        seq: 1,
+        text: 'A pauta será apresentada.',
+        cleaningStrategyVersion: 'pt-br-conservative-v1',
+        createdAt: new Date(),
+      },
+      created: false,
+      replayed: true,
+      engine: null,
+      model: null,
+      inferenceMs: null,
+    });
+
+    await gateway.onTranscriptionAudio(socket as never, pcmPayload);
+
+    expect(adaptTranscript.enqueue).not.toHaveBeenCalled();
+  });
+
   it('includes the cleaning strategy in transcript replay state', async () => {
     const { gateway, socket, snapshot, socketEmit } = setup(
       RoomParticipantRole.HOST,
@@ -188,6 +286,17 @@ describe('LiveGateway generic identities', () => {
           text: 'Comunicação acessível',
           cleaningStrategyVersion: 'pt-br-conservative-v1',
           createdAt: new Date('2026-08-06T12:00:00Z'),
+          adaptation: {
+            text: 'Comunicação que todas as pessoas entendem.',
+            status: 'succeeded',
+            failureCode: null,
+            automatic: true,
+            contextVersion: 2,
+            promptVersion: 'pt-br-accessible-v1',
+            provider: 'fake',
+            model: 'fake-deterministic-v1',
+            at: new Date('2026-08-06T12:00:01Z'),
+          },
         },
       ],
     });
@@ -202,6 +311,11 @@ describe('LiveGateway generic identities', () => {
             seq: 1,
             text: 'Comunicação acessível',
             cleaningStrategyVersion: 'pt-br-conservative-v1',
+            adaptation: expect.objectContaining({
+              text: 'Comunicação que todas as pessoas entendem.',
+              status: 'succeeded',
+              contextVersion: 2,
+            }),
           }),
         ],
       }),

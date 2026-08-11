@@ -12,6 +12,7 @@ import { UserRepository } from '../auth/repositories/user.repository';
 import { AsrClientError } from '../asr/asr-client';
 import { parseAudioSegment } from '../asr/audio-segment';
 import { TranscribeAudioSegmentUseCase } from '../asr/usecases/transcribe-audio-segment.usecase';
+import { TranscriptAdaptationCoordinator } from '../transcript-adaptation/services/transcript-adaptation-coordinator';
 import { RoomParticipantRole } from '../rooms/entities/room.entity';
 import { RoomPermissionService } from '../rooms/room-permission.service';
 import { SessionStatus } from '../sessions/entities/live-session.entity';
@@ -73,6 +74,7 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     private readonly sendChatMessage: SendChatMessageUseCase,
     private readonly endSession: EndSessionUseCase,
     private readonly transcribeAudioSegment: TranscribeAudioSegmentUseCase,
+    private readonly adaptTranscript: TranscriptAdaptationCoordinator,
   ) {}
 
   afterInit(server: Server): void {
@@ -176,9 +178,11 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
           at: message.createdAt,
         })),
         transcript: snapshot.transcript.map((segment) => ({
+          id: segment.id,
           seq: segment.seq,
           text: segment.text,
           cleaningStrategyVersion: segment.cleaningStrategyVersion,
+          adaptation: segment.adaptation,
           at: segment.createdAt,
         })),
       });
@@ -241,11 +245,24 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
       );
       if (result.created && result.segment) {
         this.server.to(roomOf(sessionId)).emit('transcript:final', {
+          id: result.segment.id,
           seq: result.segment.seq,
           text: result.segment.text,
           cleaningStrategyVersion: result.segment.cleaningStrategyVersion,
           at: result.segment.createdAt,
         });
+        void this.adaptTranscript
+          .enqueue(result.segment)
+          .then(({ event }) => {
+            this.server.to(roomOf(sessionId)).emit('transcript:adapted', event);
+          })
+          .catch((error: unknown) => {
+            this.logger.warn({
+              event: 'transcript_adaptation_failed',
+              errorType:
+                error instanceof Error ? error.name : 'UnknownAdaptationError',
+            });
+          });
       }
       socket.emit('transcription:status', {
         clientSegmentId,
