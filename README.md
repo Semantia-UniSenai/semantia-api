@@ -177,6 +177,30 @@ ASR bruto, segmentos parciais, JWT, `joinToken`, usuário e histórico não entr
 fallback silencioso entre fornecedores: erro, timeout, circuito aberto ou saída reprovada materializam o
 literal como fallback auditável.
 
+### Avaliação sintética da adaptação
+
+O corpus versionado `synthetic-pt-br-v1` contém 100 casos artificiais em 20 categorias. O harness
+imprime somente contadores, latências e tokens agregados; nunca imprime literal ou saída do modelo.
+
+```bash
+# Guardas determinísticos em todo o corpus
+pnpm evaluate:transcript-adaptation
+
+# Provider fake, sem rede
+TRANSCRIPT_ADAPTATION_ENABLED=true \
+TRANSCRIPT_ADAPTATION_PROVIDER=fake \
+pnpm evaluate:transcript-adaptation -- --mode=provider
+
+# Smoke Groq opcional e limitado; GROQ_API_KEY deve estar previamente no ambiente local/secret manager
+TRANSCRIPT_ADAPTATION_ENABLED=true \
+TRANSCRIPT_ADAPTATION_PROVIDER=groq \
+pnpm evaluate:transcript-adaptation -- --mode=provider --limit=5
+```
+
+O modo provider recusa estado `disabled` ou `misconfigured` antes da primeira chamada. Não passe chave
+por argumento, chat, commit ou arquivo versionado. Aceitação linguística final continua dependendo de
+revisão por pessoa surda, intérprete ou especialista.
+
 ## Gates
 
 ```bash
