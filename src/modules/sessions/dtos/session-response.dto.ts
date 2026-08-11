@@ -21,6 +21,12 @@ export class SessionDto {
   @ApiProperty({ type: AudienceContextDto, nullable: true })
   audienceContext: AudienceContextDto | null;
 
+  @ApiProperty({
+    example: 0,
+    description: 'Monotonic version of the persisted audience context',
+  })
+  audienceContextVersion: number;
+
   @ApiProperty()
   createdAt: Date;
 

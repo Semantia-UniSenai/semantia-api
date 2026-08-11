@@ -18,6 +18,7 @@ type SessionRow = {
   joinToken: string;
   status: string;
   audienceContext: unknown;
+  audienceContextVersion: number;
   createdAt: Date;
   startedAt: Date | null;
   endedAt: Date | null;
@@ -102,7 +103,10 @@ export class PrismaRoomSessionRepository extends RoomSessionRepository {
     return toEntity(
       await this.prisma.roomSession.update({
         where: { id },
-        data: { audienceContext: { ...context } },
+        data: {
+          audienceContext: { ...context },
+          audienceContextVersion: { increment: 1 },
+        },
       }),
     );
   }

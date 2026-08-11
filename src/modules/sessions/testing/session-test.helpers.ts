@@ -54,6 +54,7 @@ export const buildSession = (over: Partial<RoomSession> = {}): RoomSession =>
     joinToken: 'tok_abc1234567890',
     status: SessionStatus.PREPARING,
     audienceContext: null,
+    audienceContextVersion: 0,
     createdAt: new Date('2026-07-30T12:00:00Z'),
     startedAt: null,
     endedAt: null,

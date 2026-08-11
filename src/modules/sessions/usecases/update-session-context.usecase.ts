@@ -36,9 +36,9 @@ export class UpdateSessionContextUseCase {
       );
     }
 
-    if (session.status !== SessionStatus.PREPARING) {
+    if (session.status === SessionStatus.ENDED) {
       throw new ConflictException(
-        'Context cannot be changed after the session has started',
+        'Context cannot be changed after the session has ended',
       );
     }
 

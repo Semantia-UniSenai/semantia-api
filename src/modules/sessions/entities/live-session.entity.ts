@@ -13,6 +13,7 @@ export class RoomSession {
   joinToken: string;
   status: SessionStatus;
   audienceContext: AudienceContext | null;
+  audienceContextVersion: number;
   createdAt: Date;
   startedAt: Date | null;
   endedAt: Date | null;

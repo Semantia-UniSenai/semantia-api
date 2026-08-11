@@ -93,6 +93,7 @@ model RoomSession {
   joinToken       String        @unique
   status          SessionStatus @default(PREPARING)
   audienceContext Json?
+  audienceContextVersion Int    @default(0)
   createdAt       DateTime      @default(now())
   startedAt       DateTime?
   endedAt         DateTime?

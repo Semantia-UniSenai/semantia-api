@@ -130,6 +130,49 @@ describe('generic communication rooms (e2e)', () => {
     });
 
     await request(baseUrl)
+      .patch(`/api/sessions/${meeting.meetingId}/context`)
+      .set('Authorization', `Bearer ${hostToken}`)
+      .send({
+        meetingType: 'empresa',
+        ageRange: 'adultos',
+        portugueseFamiliarity: 'media',
+        domain: 'Segurança operacional',
+        simplificationLevel: 'moderada',
+      })
+      .expect(200)
+      .expect(({ body }) =>
+        expect(body).toMatchObject({
+          status: 'LIVE',
+          audienceContextVersion: 1,
+          audienceContext: {
+            meetingType: 'empresa',
+            domain: 'Segurança operacional',
+          },
+        }),
+      );
+
+    const concurrentContextUpdates = await Promise.all(
+      ['Segurança industrial', 'Evacuação preventiva'].map((domain) =>
+        request(baseUrl)
+          .patch(`/api/sessions/${meeting.meetingId}/context`)
+          .set('Authorization', `Bearer ${hostToken}`)
+          .send({
+            meetingType: 'empresa',
+            ageRange: 'adultos',
+            portugueseFamiliarity: 'media',
+            domain,
+            simplificationLevel: 'moderada',
+          })
+          .expect(200),
+      ),
+    );
+    expect(
+      concurrentContextUpdates
+        .map(({ body }) => body.audienceContextVersion as number)
+        .sort((left, right) => left - right),
+    ).toEqual([2, 3]);
+
+    await request(baseUrl)
       .get('/api/rooms')
       .set('Authorization', `Bearer ${hostToken}`)
       .expect(200)
@@ -186,6 +229,7 @@ describe('generic communication rooms (e2e)', () => {
       }),
     ).toEqual({ ok: true });
     expect(await hostState).toMatchObject({
+      session: { audienceContextVersion: 3 },
       canManage: true,
       self: { role: 'HOST' },
     });
