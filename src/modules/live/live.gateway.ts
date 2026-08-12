@@ -178,6 +178,7 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
         transcript: snapshot.transcript.map((segment) => ({
           seq: segment.seq,
           text: segment.text,
+          cleaningStrategyVersion: segment.cleaningStrategyVersion,
           at: segment.createdAt,
         })),
       });
@@ -242,6 +243,7 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
         this.server.to(roomOf(sessionId)).emit('transcript:final', {
           seq: result.segment.seq,
           text: result.segment.text,
+          cleaningStrategyVersion: result.segment.cleaningStrategyVersion,
           at: result.segment.createdAt,
         });
       }

@@ -1,12 +1,46 @@
-import { stripDisfluencies } from './disfluencies';
+import {
+  DISCARD_CASES,
+  PRESERVATION_CASES,
+  REMOVAL_CASES,
+} from '../testing/transcript-cleaning.corpus';
+import { cleanCanonicalTranscript, stripDisfluencies } from './disfluencies';
+
+describe('cleanCanonicalTranscript', () => {
+  it('returns the canonical text with its immutable strategy version', () => {
+    expect(cleanCanonicalTranscript('né? hoje hoje aula')).toEqual({
+      text: 'hoje aula',
+      cleaningStrategyVersion: 'pt-br-conservative-v1',
+    });
+  });
+
+  it.each([...REMOVAL_CASES, ...PRESERVATION_CASES])(
+    '$name',
+    ({ input, expected }) => {
+      expect(cleanCanonicalTranscript(input).text).toBe(expected);
+    },
+  );
+
+  it.each(DISCARD_CASES)('descarta ruído puro: %s', (input) => {
+    expect(cleanCanonicalTranscript(input).text).toBe('');
+  });
+
+  it('is deterministic for the same input and strategy', () => {
+    const input = 'ééé... né? ação ação acessível';
+    const first = cleanCanonicalTranscript(input);
+
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      expect(cleanCanonicalTranscript(input)).toEqual(first);
+    }
+  });
+});
 
 describe('stripDisfluencies', () => {
   it('remove marcadores de vício isolados', () => {
     expect(stripDisfluencies('hoje né vamos falar de frações')).toBe(
       'hoje vamos falar de frações',
     );
-    expect(stripDisfluencies('isso é importante tá ligado pessoal')).toBe(
-      'isso é importante pessoal',
+    expect(stripDisfluencies('isso é importante, tá ligado, pessoal')).toBe(
+      'isso é importante, pessoal',
     );
   });
 

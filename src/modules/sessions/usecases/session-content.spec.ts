@@ -30,6 +30,7 @@ describe('live room content rules', () => {
       sessionId: 'session-1',
       seq: 1,
       text: 'Vamos começar.',
+      cleaningStrategyVersion: 'pt-br-conservative-v1',
       createdAt: new Date(),
     });
     transcripts.append.mockResolvedValue({ segment, created: true });
@@ -44,6 +45,7 @@ describe('live room content rules', () => {
       'session-1',
       'vamos começar.',
       'segment-client-1',
+      'pt-br-conservative-v1',
     );
   });
 

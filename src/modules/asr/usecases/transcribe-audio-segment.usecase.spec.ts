@@ -58,6 +58,7 @@ describe('TranscribeAudioSegmentUseCase', () => {
       clientSegmentId: audio.clientSegmentId,
       seq: 4,
       text: 'Comunicação acessível',
+      cleaningStrategyVersion: 'pt-br-conservative-v1',
       createdAt: new Date(),
     });
     transcripts.findByClientSegmentId.mockResolvedValue(existing);
@@ -84,6 +85,7 @@ describe('TranscribeAudioSegmentUseCase', () => {
       clientSegmentId: audio.clientSegmentId,
       seq: 1,
       text: 'Comunicação acessível',
+      cleaningStrategyVersion: 'pt-br-conservative-v1',
       createdAt: new Date(),
     });
     transcripts.findByClientSegmentId.mockResolvedValue(null);
@@ -145,6 +147,65 @@ describe('TranscribeAudioSegmentUseCase', () => {
     });
     expect(asr.transcribe).toHaveBeenCalledTimes(1);
     expect(append.execute).not.toHaveBeenCalled();
+  });
+
+  it('caches text discarded by canonical cleaning without re-invoking ASR', async () => {
+    const { useCase, transcripts, asr, append } = setup();
+    transcripts.findByClientSegmentId.mockResolvedValue(null);
+    asr.transcribe.mockResolvedValue({
+      text: 'né? né?',
+      engine: 'faster-whisper',
+      model: 'small',
+      inferenceMs: 23,
+    });
+    append.execute.mockResolvedValue(null);
+
+    const first = await useCase.execute('host-1', 'session-1', audio);
+    const replay = await useCase.execute('host-1', 'session-1', audio);
+
+    expect(first).toEqual({
+      segment: null,
+      created: false,
+      replayed: false,
+      engine: 'faster-whisper',
+      model: 'small',
+      inferenceMs: 23,
+    });
+    expect(replay).toEqual({ ...first, replayed: true });
+    expect(asr.transcribe).toHaveBeenCalledTimes(1);
+    expect(append.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('bounds the ephemeral no-speech replay cache by cardinality', async () => {
+    const { useCase, transcripts, asr } = setup();
+    transcripts.findByClientSegmentId.mockResolvedValue(null);
+    asr.transcribe.mockResolvedValue({
+      text: '',
+      engine: 'faster-whisper',
+      model: 'small',
+      inferenceMs: 21,
+    });
+    const cacheLimit = 512;
+
+    for (let index = 0; index <= cacheLimit; index += 1) {
+      await useCase.execute('host-1', 'session-1', {
+        ...audio,
+        clientSegmentId: `segment-${index.toString().padStart(4, '0')}`,
+      });
+    }
+    expect(asr.transcribe).toHaveBeenCalledTimes(cacheLimit + 1);
+
+    await useCase.execute('host-1', 'session-1', {
+      ...audio,
+      clientSegmentId: 'segment-0000',
+    });
+    expect(asr.transcribe).toHaveBeenCalledTimes(cacheLimit + 2);
+
+    await useCase.execute('host-1', 'session-1', {
+      ...audio,
+      clientSegmentId: `segment-${cacheLimit.toString().padStart(4, '0')}`,
+    });
+    expect(asr.transcribe).toHaveBeenCalledTimes(cacheLimit + 2);
   });
 
   it('expires the ephemeral no-speech replay cache', async () => {

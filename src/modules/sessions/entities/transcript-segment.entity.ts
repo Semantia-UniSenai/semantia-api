@@ -8,6 +8,7 @@ export class TranscriptSegment {
   clientSegmentId?: string;
   seq: number;
   text: string;
+  cleaningStrategyVersion: string;
   createdAt: Date;
 
   constructor(props: TranscriptSegment) {
