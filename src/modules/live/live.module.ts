@@ -3,11 +3,18 @@ import { AsrModule } from '../asr/asr.module';
 import { AuthModule } from '../auth/auth.module';
 import { RoomsModule } from '../rooms/rooms.module';
 import { SessionsModule } from '../sessions/sessions.module';
+import { TranscriptAdaptationModule } from '../transcript-adaptation/transcript-adaptation.module';
 import { LiveGateway } from './live.gateway';
 import { LiveRoomStateService } from './live-room-state.service';
 
 @Module({
-  imports: [AuthModule, AsrModule, RoomsModule, SessionsModule],
+  imports: [
+    AuthModule,
+    AsrModule,
+    RoomsModule,
+    SessionsModule,
+    TranscriptAdaptationModule,
+  ],
   providers: [LiveGateway, LiveRoomStateService],
 })
 export class LiveModule {}

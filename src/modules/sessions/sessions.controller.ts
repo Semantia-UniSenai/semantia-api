@@ -94,7 +94,11 @@ export class SessionsController {
     @Param('id') sessionId: string,
     @Body() dto: AudienceContextDto,
   ): Promise<RoomSession> {
-    return this.updateContext.execute(actor.userId, sessionId, dto as AudienceContext);
+    return this.updateContext.execute(
+      actor.userId,
+      sessionId,
+      dto as AudienceContext,
+    );
   }
 
   @Post(':id/end')
