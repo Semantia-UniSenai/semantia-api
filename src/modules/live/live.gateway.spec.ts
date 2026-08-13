@@ -124,6 +124,7 @@ describe('LiveGateway generic identities', () => {
       clientSegmentId: 'segment-audio-1',
       seq: 1,
       text: 'Comunicação acessível',
+      cleaningStrategyVersion: 'pt-br-conservative-v1',
       createdAt: new Date(),
     };
     transcribeAudio.execute.mockResolvedValue({
@@ -155,13 +156,55 @@ describe('LiveGateway generic identities', () => {
     );
     expect(serverEmit).toHaveBeenCalledWith(
       'transcript:final',
-      expect.objectContaining({ seq: 1, text: 'Comunicação acessível' }),
+      expect.objectContaining({
+        seq: 1,
+        text: 'Comunicação acessível',
+        cleaningStrategyVersion: 'pt-br-conservative-v1',
+      }),
     );
     expect(socketEmit).toHaveBeenCalledWith(
       'transcription:status',
       expect.objectContaining({
         clientSegmentId: 'segment-audio-1',
         state: 'processing',
+      }),
+    );
+  });
+
+  it('includes the cleaning strategy in transcript replay state', async () => {
+    const { gateway, socket, snapshot, socketEmit } = setup(
+      RoomParticipantRole.HOST,
+    );
+    snapshot.execute.mockResolvedValueOnce({
+      session: details,
+      role: RoomParticipantRole.HOST,
+      canManage: true,
+      chat: [],
+      transcript: [
+        {
+          id: 'segment-1',
+          sessionId: details.id,
+          clientSegmentId: 'segment-audio-1',
+          seq: 1,
+          text: 'Comunicação acessível',
+          cleaningStrategyVersion: 'pt-br-conservative-v1',
+          createdAt: new Date('2026-08-06T12:00:00Z'),
+        },
+      ],
+    });
+
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+
+    expect(socketEmit).toHaveBeenCalledWith(
+      'session:state',
+      expect.objectContaining({
+        transcript: [
+          expect.objectContaining({
+            seq: 1,
+            text: 'Comunicação acessível',
+            cleaningStrategyVersion: 'pt-br-conservative-v1',
+          }),
+        ],
       }),
     );
   });
@@ -246,14 +289,15 @@ describe('LiveGateway generic identities', () => {
     );
   });
 
-  it('never lets a guest publish audio segments', async () => {
+  it('never lets a guest publish audio for canonical transcription', async () => {
     const { gateway, socket, transcribeAudio } = setup(
       RoomParticipantRole.GUEST,
       'guest',
     );
-    await gateway.onSessionJoin(socket, { sessionId: details.id });
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+
     await expect(
-      gateway.onTranscriptionAudio(socket as never, {}),
+      gateway.onTranscriptionAudio(socket as never, pcmPayload),
     ).resolves.toEqual({
       ok: false,
       error: {

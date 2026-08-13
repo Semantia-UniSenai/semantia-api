@@ -15,7 +15,7 @@ import {
   AppendTranscriptResult,
   TranscriptRepository,
 } from '../repositories/transcript.repository';
-import { stripDisfluencies } from './disfluencies';
+import { cleanCanonicalTranscript } from './disfluencies';
 
 export const MAX_TRANSCRIPT_SEGMENT_LENGTH = 5000;
 const CLIENT_SEGMENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$/;
@@ -61,9 +61,14 @@ export class AppendTranscriptSegmentUseCase {
     if (session.status !== SessionStatus.LIVE) {
       throw new ConflictException('Session is read-only');
     }
-    const clean = stripDisfluencies(trimmed);
-    return clean
-      ? this.transcripts.append(sessionId, clean, idempotencyKey)
+    const canonical = cleanCanonicalTranscript(trimmed);
+    return canonical.text
+      ? this.transcripts.append(
+          sessionId,
+          canonical.text,
+          idempotencyKey,
+          canonical.cleaningStrategyVersion,
+        )
       : null;
   }
 }

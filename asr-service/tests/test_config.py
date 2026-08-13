@@ -14,6 +14,7 @@ def test_defaults_are_safe_for_cpu_only_vps(monkeypatch: pytest.MonkeyPatch) -> 
         "ASR_CPU_THREADS",
         "ASR_MAX_CONCURRENCY",
         "ASR_MAX_QUEUE",
+        "ASR_HOTWORDS",
     ]
     for name in names:
         monkeypatch.delenv(name, raising=False)
@@ -27,6 +28,7 @@ def test_defaults_are_safe_for_cpu_only_vps(monkeypatch: pytest.MonkeyPatch) -> 
     assert settings.cpu_threads == 2
     assert settings.max_concurrency == 1
     assert settings.max_queue == 4
+    assert settings.hotwords == ""
 
 
 def test_invalid_boolean_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:

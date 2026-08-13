@@ -22,6 +22,7 @@ export class PrismaTranscriptRepository extends TranscriptRepository {
     sessionId: string,
     text: string,
     clientSegmentId: string,
+    cleaningStrategyVersion: string,
   ): Promise<AppendTranscriptResult> {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const existing = await this.prisma.transcriptSegment.findUnique({
@@ -43,6 +44,7 @@ export class PrismaTranscriptRepository extends TranscriptRepository {
               clientSegmentId,
               seq: (agg._max.seq ?? 0) + 1,
               text,
+              cleaningStrategyVersion,
             },
           });
         });

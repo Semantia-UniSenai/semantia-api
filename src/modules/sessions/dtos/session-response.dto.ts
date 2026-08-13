@@ -72,6 +72,9 @@ export class TranscriptSegmentDto {
   @ApiProperty({ example: 'Vamos revisar as próximas entregas.' })
   text: string;
 
+  @ApiProperty({ example: 'pt-br-conservative-v1' })
+  cleaningStrategyVersion: string;
+
   @ApiProperty()
   createdAt: Date;
 }

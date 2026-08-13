@@ -110,9 +110,10 @@ model TranscriptSegment {
   id              String   @id @default(cuid())
   sessionId       String
   clientSegmentId String
-  seq             Int
-  text            String
-  createdAt       DateTime @default(now())
+  seq                     Int
+  text                    String
+  cleaningStrategyVersion String   @default("legacy-unversioned")
+  createdAt               DateTime @default(now())
 
   session RoomSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
