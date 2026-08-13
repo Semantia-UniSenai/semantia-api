@@ -104,7 +104,7 @@ export class PrismaRoomSessionRepository extends RoomSessionRepository {
     return toEntity(
       await this.prisma.roomSession.update({
         where: { id },
-        data: { audienceContext: context as object },
+        data: { audienceContext: context },
       }),
     );
   }
@@ -115,7 +115,7 @@ export class PrismaRoomSessionRepository extends RoomSessionRepository {
   ): Promise<RoomSession> {
     const data: Record<string, unknown> = {};
     if (settings.audienceContext !== undefined) {
-      data.audienceContext = settings.audienceContext as object;
+      data.audienceContext = settings.audienceContext;
     }
     if (settings.requiresApproval !== undefined) {
       data.requiresApproval = settings.requiresApproval;

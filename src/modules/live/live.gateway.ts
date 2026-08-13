@@ -45,7 +45,11 @@ interface AdmissionEntry {
   isGuest: boolean;
   requestedAt: string;
   sessionId: string;
-  principal: { participantId: string; kind: 'account' | 'guest'; sessionId?: string };
+  principal: {
+    participantId: string;
+    kind: 'account' | 'guest';
+    sessionId?: string;
+  };
   joinToken?: string;
 }
 
@@ -74,7 +78,10 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   server: Server;
 
   private readonly logger = new Logger(LiveGateway.name);
-  private readonly admissionQueues = new Map<string, Map<string, AdmissionEntry>>();
+  private readonly admissionQueues = new Map<
+    string,
+    Map<string, AdmissionEntry>
+  >();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -165,7 +172,12 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
       identity.role = snapshot.role;
 
       if (snapshot.session.requiresApproval && !snapshot.canManage) {
-        return this.queueForAdmission(socket, identity, body.sessionId, body.token);
+        return this.queueForAdmission(
+          socket,
+          identity,
+          body.sessionId,
+          body.token,
+        );
       }
 
       if (socket.data.sessionId && socket.data.sessionId !== body.sessionId) {
@@ -228,7 +240,10 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     try {
       const { identity, sessionId } = this.requireParticipant(socket);
       if (!this.permissions.canManage(identity.role)) {
-        return this.errorAck('FORBIDDEN', 'Only a host or moderator can approve admissions');
+        return this.errorAck(
+          'FORBIDDEN',
+          'Only a host or moderator can approve admissions',
+        );
       }
       const sessionQueue = this.admissionQueues.get(sessionId);
       const entry = sessionQueue?.get(body?.admissionId ?? '');
@@ -290,14 +305,14 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('admission:reject')
-  onAdmissionReject(
-    socket: LiveSocket,
-    body: { admissionId?: string },
-  ): Ack {
+  onAdmissionReject(socket: LiveSocket, body: { admissionId?: string }): Ack {
     try {
       const { identity, sessionId } = this.requireParticipant(socket);
       if (!this.permissions.canManage(identity.role)) {
-        return this.errorAck('FORBIDDEN', 'Only a host or moderator can reject admissions');
+        return this.errorAck(
+          'FORBIDDEN',
+          'Only a host or moderator can reject admissions',
+        );
       }
       const sessionQueue = this.admissionQueues.get(sessionId);
       const entry = sessionQueue?.get(body?.admissionId ?? '');
@@ -306,7 +321,8 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
       }
       sessionQueue!.delete(entry.admissionId);
       entry.socket.emit('admission:denied', {
-        message: 'Seu acesso à sala não foi aceito. Entre em contato com o anfitrião.',
+        message:
+          'Seu acesso à sala não foi aceito. Entre em contato com o anfitrião.',
       });
       entry.socket.disconnect(true);
       return { ok: true };
@@ -540,7 +556,8 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     const room = this.server.sockets.adapter.rooms.get(roomOf(sessionId));
     if (!room) return null;
     for (const socketId of room) {
-      const s = this.server.sockets.sockets.get(socketId) as LiveSocket | undefined;
+      const s = this.server.sockets.sockets.get(socketId) as
+        LiveSocket | undefined;
       if (s?.data?.identity?.role === RoomParticipantRole.HOST) return s;
     }
     return null;

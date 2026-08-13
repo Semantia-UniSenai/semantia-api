@@ -47,7 +47,10 @@ export class UpdateSessionContextUseCase {
     );
 
     const newContext = hasContextFields
-      ? ({ ...(session.audienceContext ?? {}), ...contextFields } as AudienceContext)
+      ? ({
+          ...(session.audienceContext ?? {}),
+          ...contextFields,
+        } as AudienceContext)
       : undefined;
 
     return this.sessions.updateSettings(sessionId, {
