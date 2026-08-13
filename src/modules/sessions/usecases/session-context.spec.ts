@@ -45,15 +45,37 @@ describe('UpdateSessionContextUseCase', () => {
     });
     sessions.findById.mockResolvedValue(session);
     rooms.getParticipantRole.mockResolvedValue(RoomParticipantRole.HOST);
-    sessions.updateAudienceContext.mockResolvedValue(updated);
+    sessions.updateSettings.mockResolvedValue(updated);
 
     const result = await useCase.execute('host-1', session.id, context);
 
-    expect(sessions.updateAudienceContext).toHaveBeenCalledWith(
+    expect(sessions.updateSettings).toHaveBeenCalledWith(
       session.id,
-      context,
+      expect.objectContaining({ audienceContext: context }),
     );
     expect(result.audienceContext).toEqual(context);
+  });
+
+  it('permite atualizar requiresApproval durante sessão LIVE', async () => {
+    const { useCase, sessions, rooms } = buildUseCase();
+    const session = buildSession({ status: SessionStatus.LIVE });
+    const updated = buildSession({
+      status: SessionStatus.LIVE,
+      requiresApproval: true,
+    });
+    sessions.findById.mockResolvedValue(session);
+    rooms.getParticipantRole.mockResolvedValue(RoomParticipantRole.HOST);
+    sessions.updateSettings.mockResolvedValue(updated);
+
+    const result = await useCase.execute('host-1', session.id, {
+      requiresApproval: true,
+    });
+
+    expect(sessions.updateSettings).toHaveBeenCalledWith(
+      session.id,
+      expect.objectContaining({ requiresApproval: true }),
+    );
+    expect(result.requiresApproval).toBe(true);
   });
 
   it('rejeita quando a sessão não existe', async () => {
@@ -74,18 +96,6 @@ describe('UpdateSessionContextUseCase', () => {
     await expect(
       useCase.execute('participant-1', 'session-1', context),
     ).rejects.toThrow(ForbiddenException);
-  });
-
-  it('rejeita quando a sessão já está LIVE', async () => {
-    const { useCase, sessions, rooms } = buildUseCase();
-    sessions.findById.mockResolvedValue(
-      buildSession({ status: SessionStatus.LIVE }),
-    );
-    rooms.getParticipantRole.mockResolvedValue(RoomParticipantRole.HOST);
-
-    await expect(
-      useCase.execute('host-1', 'session-1', context),
-    ).rejects.toThrow(ConflictException);
   });
 
   it('rejeita quando a sessão já está ENDED', async () => {

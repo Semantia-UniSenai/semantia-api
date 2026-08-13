@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { HttpException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
@@ -37,6 +38,21 @@ interface SocketData {
   sessionId?: string;
 }
 
+interface AdmissionEntry {
+  admissionId: string;
+  socket: LiveSocket;
+  displayName: string;
+  isGuest: boolean;
+  requestedAt: string;
+  sessionId: string;
+  principal: {
+    participantId: string;
+    kind: 'account' | 'guest';
+    sessionId?: string;
+  };
+  joinToken?: string;
+}
+
 type AnyEventsMap = Record<string, (...args: any[]) => void>;
 type LiveSocket = Socket<AnyEventsMap, AnyEventsMap, AnyEventsMap, SocketData>;
 
@@ -62,6 +78,10 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   server: Server;
 
   private readonly logger = new Logger(LiveGateway.name);
+  private readonly admissionQueues = new Map<
+    string,
+    Map<string, AdmissionEntry>
+  >();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -126,6 +146,7 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   }
 
   handleDisconnect(socket: LiveSocket): void {
+    this.removeFromAdmissionQueue(socket);
     this.dropSocket(socket);
   }
 
@@ -149,6 +170,16 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
         body.token,
       );
       identity.role = snapshot.role;
+
+      if (snapshot.session.requiresApproval && !snapshot.canManage) {
+        return this.queueForAdmission(
+          socket,
+          identity,
+          body.sessionId,
+          body.token,
+        );
+      }
+
       if (socket.data.sessionId && socket.data.sessionId !== body.sessionId) {
         this.leaveCurrentRoom(socket);
       }
@@ -167,6 +198,9 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
         self: identity,
         participants: this.state.getParticipants(body.sessionId),
         raisedHands: this.state.getRaisedHands(body.sessionId),
+        admissionQueue: snapshot.canManage
+          ? this.getAdmissionQueueEntries(body.sessionId)
+          : [],
         chat: snapshot.chat.map((message) => ({
           id: message.id,
           participantId: message.participantId,
@@ -197,6 +231,105 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   onSessionLeave(socket: LiveSocket): Ack {
     this.leaveCurrentRoom(socket);
     return { ok: true };
+  }
+
+  @SubscribeMessage('admission:approve')
+  async onAdmissionApprove(
+    socket: LiveSocket,
+    body: { admissionId?: string },
+  ): Promise<Ack> {
+    try {
+      const { identity, sessionId } = this.requireParticipant(socket);
+      if (!this.permissions.canManage(identity.role)) {
+        return this.errorAck(
+          'FORBIDDEN',
+          'Only a host or moderator can approve admissions',
+        );
+      }
+      const sessionQueue = this.admissionQueues.get(sessionId);
+      const entry = sessionQueue?.get(body?.admissionId ?? '');
+      if (!entry) {
+        return this.errorAck('NOT_FOUND', 'Admission request not found');
+      }
+      sessionQueue!.delete(entry.admissionId);
+
+      const snapshot = await this.getSessionSnapshot.execute(
+        entry.principal,
+        sessionId,
+        entry.joinToken,
+      );
+      if (!entry.socket.data.identity) return { ok: true };
+      entry.socket.data.identity.role = snapshot.role;
+      const candidateIdentity = entry.socket.data.identity;
+
+      const { firstJoin } = this.state.join(
+        sessionId,
+        candidateIdentity,
+        entry.socket.id,
+        { status: snapshot.session.status },
+      );
+      await entry.socket.join(roomOf(sessionId));
+      entry.socket.data.sessionId = sessionId;
+
+      entry.socket.emit('session:state', {
+        session: snapshot.session,
+        canManage: snapshot.canManage,
+        self: candidateIdentity,
+        participants: this.state.getParticipants(sessionId),
+        raisedHands: this.state.getRaisedHands(sessionId),
+        admissionQueue: [],
+        chat: snapshot.chat.map((m) => ({
+          id: m.id,
+          participantId: m.participantId,
+          name: m.participantName,
+          role: m.participantRole,
+          text: m.text,
+          at: m.createdAt,
+        })),
+        transcript: snapshot.transcript.map((s) => ({
+          seq: s.seq,
+          text: s.text,
+          at: s.createdAt,
+        })),
+      });
+
+      if (firstJoin) {
+        entry.socket.to(roomOf(sessionId)).emit('presence:joined', {
+          participant: candidateIdentity,
+        });
+      }
+
+      return { ok: true };
+    } catch (error) {
+      return this.toErrorAck(error);
+    }
+  }
+
+  @SubscribeMessage('admission:reject')
+  onAdmissionReject(socket: LiveSocket, body: { admissionId?: string }): Ack {
+    try {
+      const { identity, sessionId } = this.requireParticipant(socket);
+      if (!this.permissions.canManage(identity.role)) {
+        return this.errorAck(
+          'FORBIDDEN',
+          'Only a host or moderator can reject admissions',
+        );
+      }
+      const sessionQueue = this.admissionQueues.get(sessionId);
+      const entry = sessionQueue?.get(body?.admissionId ?? '');
+      if (!entry) {
+        return this.errorAck('NOT_FOUND', 'Admission request not found');
+      }
+      sessionQueue!.delete(entry.admissionId);
+      entry.socket.emit('admission:denied', {
+        message:
+          'Seu acesso à sala não foi aceito. Entre em contato com o anfitrião.',
+      });
+      entry.socket.disconnect(true);
+      return { ok: true };
+    } catch (error) {
+      return this.toErrorAck(error);
+    }
   }
 
   @SubscribeMessage('transcription:audio')
@@ -353,6 +486,18 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
         sessionId,
       );
       this.state.markEnded(sessionId);
+
+      const sessionQueue = this.admissionQueues.get(sessionId);
+      if (sessionQueue) {
+        for (const entry of sessionQueue.values()) {
+          entry.socket.emit('admission:denied', {
+            message: 'A reunião foi encerrada.',
+          });
+          entry.socket.disconnect(true);
+        }
+        this.admissionQueues.delete(sessionId);
+      }
+
       this.server.to(roomOf(sessionId)).emit('session:ended', {
         sessionId,
         endedAt: session.endedAt,
@@ -363,6 +508,90 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
       return { ok: true };
     } catch (error) {
       return this.toErrorAck(error);
+    }
+  }
+
+  private queueForAdmission(
+    socket: LiveSocket,
+    identity: SocketIdentity,
+    sessionId: string,
+    joinToken?: string,
+  ): Ack {
+    const admissionId = randomUUID();
+    let sessionQueue = this.admissionQueues.get(sessionId);
+    if (!sessionQueue) {
+      sessionQueue = new Map();
+      this.admissionQueues.set(sessionId, sessionQueue);
+    }
+    const entry: AdmissionEntry = {
+      admissionId,
+      socket,
+      displayName: identity.name,
+      isGuest: identity.kind === 'guest',
+      requestedAt: new Date().toISOString(),
+      sessionId,
+      principal: {
+        participantId: identity.participantId,
+        kind: identity.kind,
+        sessionId: identity.sessionId,
+      },
+      joinToken,
+    };
+    sessionQueue.set(admissionId, entry);
+
+    socket.emit('admission:waiting', { admissionId });
+
+    const hostSocket = this.getHostSocket(sessionId);
+    if (hostSocket) {
+      hostSocket.emit('admission:request', {
+        admissionId,
+        displayName: identity.name,
+        isGuest: identity.kind === 'guest',
+        requestedAt: entry.requestedAt,
+      });
+    }
+
+    return { ok: true };
+  }
+
+  private getHostSocket(sessionId: string): LiveSocket | null {
+    const room = this.server.sockets.adapter.rooms.get(roomOf(sessionId));
+    if (!room) return null;
+    for (const socketId of room) {
+      const s = this.server.sockets.sockets.get(socketId) as
+        LiveSocket | undefined;
+      if (s?.data?.identity?.role === RoomParticipantRole.HOST) return s;
+    }
+    return null;
+  }
+
+  private getAdmissionQueueEntries(sessionId: string): Array<{
+    admissionId: string;
+    displayName: string;
+    isGuest: boolean;
+    requestedAt: string;
+  }> {
+    const queue = this.admissionQueues.get(sessionId);
+    if (!queue) return [];
+    return Array.from(queue.values()).map(
+      ({ admissionId, displayName, isGuest, requestedAt }) => ({
+        admissionId,
+        displayName,
+        isGuest,
+        requestedAt,
+      }),
+    );
+  }
+
+  private removeFromAdmissionQueue(socket: LiveSocket): void {
+    for (const [sessionId, queue] of this.admissionQueues) {
+      for (const [admissionId, entry] of queue) {
+        if (entry.socket.id === socket.id) {
+          queue.delete(admissionId);
+          if (queue.size === 0) this.admissionQueues.delete(sessionId);
+          return;
+        }
+      }
     }
   }
 

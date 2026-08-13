@@ -14,6 +14,7 @@ const details = new RoomSessionDetails({
   roomId: 'room-1',
   joinToken: 'tok_abc1234567890',
   status: SessionStatus.LIVE,
+  requiresApproval: false,
   audienceContext: null,
   createdAt: new Date(),
   startedAt: new Date(),

@@ -10,6 +10,11 @@ export interface CreateRoomSessionData {
   joinToken: string;
 }
 
+export interface SessionSettingsUpdate {
+  audienceContext?: AudienceContext;
+  requiresApproval?: boolean;
+}
+
 export abstract class RoomSessionRepository {
   abstract create(data: CreateRoomSessionData): Promise<RoomSession>;
   abstract findById(id: string): Promise<RoomSession | null>;
@@ -21,5 +26,9 @@ export abstract class RoomSessionRepository {
   abstract updateAudienceContext(
     id: string,
     context: AudienceContext,
+  ): Promise<RoomSession>;
+  abstract updateSettings(
+    id: string,
+    settings: SessionSettingsUpdate,
   ): Promise<RoomSession>;
 }

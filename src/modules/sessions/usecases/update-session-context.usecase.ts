@@ -9,6 +9,7 @@ import { RoomRepository } from '../../rooms/repositories/room.repository';
 import { AudienceContext } from '../entities/audience-context.entity';
 import { RoomSession, SessionStatus } from '../entities/live-session.entity';
 import { RoomSessionRepository } from '../repositories/live-session.repository';
+import { AudienceContextDto } from '../dtos/audience-context.dto';
 
 @Injectable()
 export class UpdateSessionContextUseCase {
@@ -21,7 +22,7 @@ export class UpdateSessionContextUseCase {
   async execute(
     actorUserId: string,
     sessionId: string,
-    context: AudienceContext,
+    dto: AudienceContextDto,
   ): Promise<RoomSession> {
     const session = await this.sessions.findById(sessionId);
     if (!session) throw new NotFoundException('Session not found');
@@ -36,12 +37,25 @@ export class UpdateSessionContextUseCase {
       );
     }
 
-    if (session.status !== SessionStatus.PREPARING) {
-      throw new ConflictException(
-        'Context cannot be changed after the session has started',
-      );
+    if (session.status === SessionStatus.ENDED) {
+      throw new ConflictException('Cannot update an ended session');
     }
 
-    return this.sessions.updateAudienceContext(sessionId, context);
+    const { requiresApproval, ...contextFields } = dto;
+    const hasContextFields = Object.values(contextFields).some(
+      (v) => v !== undefined,
+    );
+
+    const newContext = hasContextFields
+      ? ({
+          ...(session.audienceContext ?? {}),
+          ...contextFields,
+        } as AudienceContext)
+      : undefined;
+
+    return this.sessions.updateSettings(sessionId, {
+      audienceContext: newContext,
+      requiresApproval,
+    });
   }
 }

@@ -9,6 +9,7 @@ import {
 import {
   CreateRoomSessionData,
   RoomSessionRepository,
+  SessionSettingsUpdate,
 } from './live-session.repository';
 
 type SessionRow = {
@@ -17,6 +18,7 @@ type SessionRow = {
   roomId: string;
   joinToken: string;
   status: string;
+  requiresApproval: boolean;
   audienceContext: unknown;
   createdAt: Date;
   startedAt: Date | null;
@@ -102,8 +104,24 @@ export class PrismaRoomSessionRepository extends RoomSessionRepository {
     return toEntity(
       await this.prisma.roomSession.update({
         where: { id },
-        data: { audienceContext: context as object },
+        data: { audienceContext: context },
       }),
+    );
+  }
+
+  async updateSettings(
+    id: string,
+    settings: SessionSettingsUpdate,
+  ): Promise<RoomSession> {
+    const data: Record<string, unknown> = {};
+    if (settings.audienceContext !== undefined) {
+      data.audienceContext = settings.audienceContext;
+    }
+    if (settings.requiresApproval !== undefined) {
+      data.requiresApproval = settings.requiresApproval;
+    }
+    return toEntity(
+      await this.prisma.roomSession.update({ where: { id }, data }),
     );
   }
 }

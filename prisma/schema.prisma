@@ -87,15 +87,16 @@ model RoomMember {
 }
 
 model RoomSession {
-  id              String        @id @default(cuid())
-  title           String
-  roomId          String
-  joinToken       String        @unique
-  status          SessionStatus @default(PREPARING)
-  audienceContext Json?
-  createdAt       DateTime      @default(now())
-  startedAt       DateTime?
-  endedAt         DateTime?
+  id               String        @id @default(cuid())
+  title            String
+  roomId           String
+  joinToken        String        @unique
+  status           SessionStatus @default(PREPARING)
+  requiresApproval Boolean       @default(false)
+  audienceContext  Json?
+  createdAt        DateTime      @default(now())
+  startedAt        DateTime?
+  endedAt          DateTime?
 
   room       Room                @relation(fields: [roomId], references: [id], onDelete: Cascade)
   transcripts TranscriptSegment[]
