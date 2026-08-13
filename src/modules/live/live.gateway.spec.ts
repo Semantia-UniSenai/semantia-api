@@ -14,6 +14,7 @@ const details = new RoomSessionDetails({
   roomId: 'room-1',
   joinToken: 'tok_abc1234567890',
   status: SessionStatus.LIVE,
+  requiresApproval: false,
   audienceContext: null,
   createdAt: new Date(),
   startedAt: new Date(),
@@ -245,21 +246,21 @@ describe('LiveGateway generic identities', () => {
     );
   });
 
-  it('never lets a guest publish final transcript segments', async () => {
-    const { gateway, socket, append } = setup(
+  it('never lets a guest publish audio segments', async () => {
+    const { gateway, socket, transcribeAudio } = setup(
       RoomParticipantRole.GUEST,
       'guest',
     );
     await gateway.onSessionJoin(socket, { sessionId: details.id });
     await expect(
-      gateway.onTranscriptFinal(socket as never, { text: 'segredo' }),
+      gateway.onTranscriptionAudio(socket as never, {}),
     ).resolves.toEqual({
       ok: false,
       error: {
         code: 'FORBIDDEN',
-        message: 'Guests cannot publish the transcript',
+        message: 'Only the host can publish the transcript',
       },
     });
-    expect(append.execute).not.toHaveBeenCalled();
+    expect(transcribeAudio.execute).not.toHaveBeenCalled();
   });
 });

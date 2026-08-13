@@ -12,6 +12,7 @@ export class RoomSession {
   roomId: string;
   joinToken: string;
   status: SessionStatus;
+  requiresApproval: boolean;
   audienceContext: AudienceContext | null;
   createdAt: Date;
   startedAt: Date | null;
