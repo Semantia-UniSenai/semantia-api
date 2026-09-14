@@ -308,3 +308,133 @@ describe('LiveGateway generic identities', () => {
     expect(transcribeAudio.execute).not.toHaveBeenCalled();
   });
 });
+
+describe('LiveGateway participant removal', () => {
+  function makeTargetSocket(participantId = 'participant-1') {
+    const emit = jest.fn();
+    const disconnect = jest.fn();
+    const socket = {
+      id: `socket-${participantId}`,
+      data: {
+        identity: {
+          participantId,
+          name: 'Participante',
+          role: RoomParticipantRole.PARTICIPANT,
+          kind: 'account' as const,
+        },
+        sessionId: details.id,
+      },
+      join: jest.fn().mockResolvedValue(undefined),
+      leave: jest.fn().mockResolvedValue(undefined),
+      emit,
+      to: jest.fn(() => ({ emit: jest.fn() })),
+      disconnect,
+    };
+    return { socket, emit, disconnect };
+  }
+
+  function setupRemoval() {
+    const base = setup(RoomParticipantRole.HOST);
+    const { gateway } = base;
+    const { socket: target, emit: targetEmit, disconnect: targetDisconnect } = makeTargetSocket();
+
+    const state: LiveRoomStateService = (gateway as any).state;
+    state.join(details.id, target.data.identity as any, target.id, { status: details.status });
+
+    const roomSet = new Set([base.socket.id, target.id]);
+    const socketsMap = new Map<string, unknown>([
+      [base.socket.id, base.socket],
+      [target.id, target],
+    ]);
+    (gateway as any).server = {
+      to: jest.fn(() => ({ emit: base.serverEmit })),
+      in: jest.fn(() => ({ socketsLeave: jest.fn() })),
+      sockets: {
+        adapter: { rooms: new Map([[`session:${details.id}`, roomSet]]) },
+        sockets: socketsMap,
+      },
+    };
+    return { ...base, target, targetEmit, targetDisconnect, state };
+  }
+
+  it('remove host can kick a participant and emits participant:removed before disconnecting', async () => {
+    const { gateway, socket, targetEmit, targetDisconnect } = setupRemoval();
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+
+    const result = gateway.onParticipantRemove(socket as never, {
+      participantId: 'participant-1',
+    });
+    expect(result).toEqual({ ok: true });
+    expect(targetEmit).toHaveBeenCalledWith(
+      'participant:removed',
+      expect.objectContaining({ reason: expect.any(String) }),
+    );
+    expect(targetDisconnect).toHaveBeenCalledWith(true);
+  });
+
+  it('blocks removed participant from rejoining when requiresApproval is false', async () => {
+    const { gateway, socket, snapshot } = setupRemoval();
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+    gateway.onParticipantRemove(socket as never, { participantId: 'participant-1' });
+
+    const rejoinSocket = {
+      id: 'socket-rejoin',
+      data: { identity: { participantId: 'participant-1', name: 'Participante', role: RoomParticipantRole.PARTICIPANT, kind: 'account' as const } },
+      join: jest.fn(), leave: jest.fn(), emit: jest.fn(), to: jest.fn(() => ({ emit: jest.fn() })), disconnect: jest.fn(),
+    };
+    snapshot.execute.mockResolvedValueOnce({
+      session: details,
+      role: RoomParticipantRole.PARTICIPANT,
+      canManage: false,
+      chat: [],
+      transcript: [],
+    });
+
+    const result = await gateway.onSessionJoin(rejoinSocket as never, { sessionId: details.id });
+    expect(result).toEqual({ ok: false, error: expect.objectContaining({ code: 'PARTICIPANT_REMOVED' }) });
+  });
+
+  it('routes removed participant to admission queue when requiresApproval is true', async () => {
+    const { gateway, socket, snapshot } = setupRemoval();
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+    gateway.onParticipantRemove(socket as never, { participantId: 'participant-1' });
+
+    const detailsWithApproval = { ...details, requiresApproval: true };
+    const rejoinSocket = {
+      id: 'socket-rejoin',
+      data: { identity: { participantId: 'participant-1', name: 'Participante', role: RoomParticipantRole.PARTICIPANT, kind: 'account' as const } },
+      join: jest.fn(), leave: jest.fn(), emit: jest.fn(), to: jest.fn(() => ({ emit: jest.fn() })), disconnect: jest.fn(),
+    };
+    snapshot.execute.mockResolvedValueOnce({
+      session: detailsWithApproval,
+      role: RoomParticipantRole.PARTICIPANT,
+      canManage: false,
+      chat: [],
+      transcript: [],
+    });
+
+    const result = await gateway.onSessionJoin(rejoinSocket as never, { sessionId: details.id });
+    expect(result).toEqual({ ok: true });
+    expect(rejoinSocket.emit).toHaveBeenCalledWith('admission:waiting', expect.anything());
+  });
+
+  it('refuses to remove the host', async () => {
+    const { gateway, socket } = setupRemoval();
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+
+    const result = gateway.onParticipantRemove(socket as never, {
+      participantId: 'account-1',
+    });
+    expect(result).toEqual({ ok: false, error: expect.objectContaining({ code: 'FORBIDDEN' }) });
+  });
+
+  it('non-manager cannot remove participants', async () => {
+    const base = setup(RoomParticipantRole.PARTICIPANT);
+    await base.gateway.onSessionJoin(base.socket as never, { sessionId: details.id });
+
+    const result = base.gateway.onParticipantRemove(base.socket as never, {
+      participantId: 'some-other-participant',
+    });
+    expect(result).toEqual({ ok: false, error: expect.objectContaining({ code: 'FORBIDDEN' }) });
+  });
+});

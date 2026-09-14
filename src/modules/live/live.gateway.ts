@@ -82,6 +82,7 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     string,
     Map<string, AdmissionEntry>
   >();
+  private readonly removedParticipants = new Map<string, Set<string>>();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -170,6 +171,22 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
         body.token,
       );
       identity.role = snapshot.role;
+
+      const wasRemoved = this.isRemoved(body.sessionId, identity.participantId);
+      if (wasRemoved) {
+        if (snapshot.session.requiresApproval && !snapshot.canManage) {
+          return this.queueForAdmission(
+            socket,
+            identity,
+            body.sessionId,
+            body.token,
+          );
+        }
+        return this.errorAck(
+          'PARTICIPANT_REMOVED',
+          'Você foi removido desta sala.',
+        );
+      }
 
       if (snapshot.session.requiresApproval && !snapshot.canManage) {
         return this.queueForAdmission(
@@ -261,6 +278,7 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
       if (!entry.socket.data.identity) return { ok: true };
       entry.socket.data.identity.role = snapshot.role;
       const candidateIdentity = entry.socket.data.identity;
+      this.clearRemoved(sessionId, candidateIdentity.participantId);
 
       const { firstJoin } = this.state.join(
         sessionId,
@@ -474,6 +492,60 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     }
   }
 
+  @SubscribeMessage('participant:remove')
+  onParticipantRemove(
+    socket: LiveSocket,
+    body: { participantId?: string },
+  ): Ack {
+    try {
+      const { identity, sessionId, status } = this.requireParticipant(socket);
+      if (!this.permissions.canManage(identity.role)) {
+        return this.errorAck(
+          'FORBIDDEN',
+          'Only a host or moderator can remove participants',
+        );
+      }
+      if (status !== SessionStatus.LIVE) {
+        return this.errorAck('SESSION_READ_ONLY', 'Session is read-only');
+      }
+      const targetId = body?.participantId;
+      if (!targetId || typeof targetId !== 'string') {
+        return this.errorAck('BAD_REQUEST', 'participantId is required');
+      }
+      const targetParticipant = this.state.getParticipant(sessionId, targetId);
+      if (!targetParticipant) {
+        return this.errorAck('NOT_FOUND', 'Participant not found in this session');
+      }
+      if (targetParticipant.role === RoomParticipantRole.HOST) {
+        return this.errorAck('FORBIDDEN', 'Cannot remove the host');
+      }
+
+      this.markRemoved(sessionId, targetId);
+      this.logger.log(
+        `[moderation] session=${sessionId} removed_by=${identity.participantId} removed=${targetId} at=${new Date().toISOString()}`,
+      );
+
+      const room = this.server.sockets.adapter.rooms.get(roomOf(sessionId));
+      if (room) {
+        for (const socketId of Array.from(room)) {
+          const s = this.server.sockets.sockets.get(socketId) as
+            | LiveSocket
+            | undefined;
+          if (s?.data?.identity?.participantId === targetId) {
+            s.emit('participant:removed', {
+              reason: 'Você foi removido da sala pelo anfitrião.',
+            });
+            s.disconnect(true);
+          }
+        }
+      }
+
+      return { ok: true };
+    } catch (error) {
+      return this.toErrorAck(error);
+    }
+  }
+
   @SubscribeMessage('session:end')
   async onSessionEnd(socket: LiveSocket): Promise<Ack> {
     try {
@@ -503,6 +575,7 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
         endedAt: session.endedAt,
       });
       this.state.closeSession(sessionId);
+      this.removedParticipants.delete(sessionId);
       this.server.in(roomOf(sessionId)).socketsLeave(roomOf(sessionId));
       socket.data.sessionId = undefined;
       return { ok: true };
@@ -581,6 +654,23 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
         requestedAt,
       }),
     );
+  }
+
+  private markRemoved(sessionId: string, participantId: string): void {
+    let set = this.removedParticipants.get(sessionId);
+    if (!set) {
+      set = new Set();
+      this.removedParticipants.set(sessionId, set);
+    }
+    set.add(participantId);
+  }
+
+  private clearRemoved(sessionId: string, participantId: string): void {
+    this.removedParticipants.get(sessionId)?.delete(participantId);
+  }
+
+  private isRemoved(sessionId: string, participantId: string): boolean {
+    return this.removedParticipants.get(sessionId)?.has(participantId) ?? false;
   }
 
   private removeFromAdmissionQueue(socket: LiveSocket): void {
