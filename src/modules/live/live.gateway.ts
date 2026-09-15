@@ -13,6 +13,10 @@ import { UserRepository } from '../auth/repositories/user.repository';
 import { AsrClientError } from '../asr/asr-client';
 import { parseAudioSegment } from '../asr/audio-segment';
 import { TranscribeAudioSegmentUseCase } from '../asr/usecases/transcribe-audio-segment.usecase';
+import type { MediaCredentials } from '../media/contracts/media-room.provider';
+import { MediaError } from '../media/errors/media.errors';
+import { CloseMediaRoomUseCase } from '../media/usecases/close-media-room.usecase';
+import { IssueMediaCredentialsUseCase } from '../media/usecases/issue-media-credentials.usecase';
 import { RoomParticipantRole } from '../rooms/entities/room.entity';
 import { RoomPermissionService } from '../rooms/room-permission.service';
 import { SessionStatus } from '../sessions/entities/live-session.entity';
@@ -64,6 +68,8 @@ const CODE_BY_STATUS: Record<number, string> = {
   404: 'NOT_FOUND',
   409: 'SESSION_READ_ONLY',
 };
+const MEDIA_CREDENTIAL_LIMIT = 3;
+const MEDIA_CREDENTIAL_WINDOW_MS = 10_000;
 
 @WebSocketGateway({
   namespace: '/live',
@@ -82,6 +88,7 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     string,
     Map<string, AdmissionEntry>
   >();
+  private readonly mediaCredentialRequests = new Map<string, number[]>();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -93,6 +100,8 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     private readonly sendChatMessage: SendChatMessageUseCase,
     private readonly endSession: EndSessionUseCase,
     private readonly transcribeAudioSegment: TranscribeAudioSegmentUseCase,
+    private readonly issueMediaCredentials: IssueMediaCredentialsUseCase,
+    private readonly closeMediaRoom: CloseMediaRoomUseCase,
   ) {}
 
   afterInit(server: Server): void {
@@ -146,6 +155,7 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   }
 
   handleDisconnect(socket: LiveSocket): void {
+    this.mediaCredentialRequests.delete(socket.id);
     this.removeFromAdmissionQueue(socket);
     this.dropSocket(socket);
   }
@@ -231,6 +241,30 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   onSessionLeave(socket: LiveSocket): Ack {
     this.leaveCurrentRoom(socket);
     return { ok: true };
+  }
+
+  @SubscribeMessage('media:credentials')
+  async onMediaCredentials(socket: LiveSocket): Promise<Ack<MediaCredentials>> {
+    try {
+      const { identity, sessionId } = this.requireParticipant(socket);
+      if (!this.consumeMediaCredentialRequest(socket.id)) {
+        return this.errorAck(
+          'RATE_LIMITED',
+          'Wait before requesting new media credentials',
+        );
+      }
+      const credentials = await this.issueMediaCredentials.execute({
+        sessionId,
+        participant: {
+          participantId: identity.participantId,
+          name: identity.name,
+          role: identity.role,
+        },
+      });
+      return { ok: true, ...credentials };
+    } catch (error) {
+      return this.toErrorAck(error);
+    }
   }
 
   @SubscribeMessage('admission:approve')
@@ -486,6 +520,7 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
         sessionId,
       );
       this.state.markEnded(sessionId);
+      await this.closeMediaAfterEnd(sessionId);
 
       const sessionQueue = this.admissionQueues.get(sessionId);
       if (sessionQueue) {
@@ -595,6 +630,20 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     }
   }
 
+  private consumeMediaCredentialRequest(socketId: string): boolean {
+    const now = Date.now();
+    const recent = (this.mediaCredentialRequests.get(socketId) ?? []).filter(
+      (requestedAt) => now - requestedAt < MEDIA_CREDENTIAL_WINDOW_MS,
+    );
+    if (recent.length >= MEDIA_CREDENTIAL_LIMIT) {
+      this.mediaCredentialRequests.set(socketId, recent);
+      return false;
+    }
+    recent.push(now);
+    this.mediaCredentialRequests.set(socketId, recent);
+    return true;
+  }
+
   private requireIdentity(socket: LiveSocket): SocketIdentity {
     if (!socket.data.identity) {
       throw new WsError('UNAUTHORIZED', 'Socket is not authenticated');
@@ -643,6 +692,21 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     }
   }
 
+  private async closeMediaAfterEnd(sessionId: string): Promise<void> {
+    try {
+      await this.closeMediaRoom.execute(sessionId);
+    } catch (error) {
+      const code =
+        error instanceof MediaError ? error.code : 'MEDIA_CLEANUP_FAILED';
+      const safeSessionId = sessionId
+        .replace(/[^a-zA-Z0-9:_-]/g, '_')
+        .slice(0, 128);
+      this.logger.warn(
+        `Media cleanup failed for session ${safeSessionId}: ${code}`,
+      );
+    }
+  }
+
   private errorAck(
     code: string,
     message: string,
@@ -659,6 +723,12 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   } {
     if (error instanceof WsError) {
       return { ok: false, error: { code: error.code, message: error.message } };
+    }
+    if (error instanceof MediaError) {
+      return {
+        ok: false,
+        error: { code: error.code, message: error.message },
+      };
     }
     if (error instanceof AsrClientError) {
       return {

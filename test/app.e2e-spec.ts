@@ -157,6 +157,11 @@ describe('generic communication rooms (e2e)', () => {
       .expect(404);
 
     await request(baseUrl)
+      .post(`/api/sessions/${meeting.meetingId}/end`)
+      .set('Authorization', `Bearer ${hostToken}`)
+      .expect(404);
+
+    await request(baseUrl)
       .get('/api/sessions/resolve')
       .query({ token: meeting.joinToken })
       .expect(200)
