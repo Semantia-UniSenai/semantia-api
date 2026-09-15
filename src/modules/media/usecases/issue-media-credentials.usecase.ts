@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { SessionStatus } from '../../sessions/entities/live-session.entity';
+import { RoomSessionRepository } from '../../sessions/repositories/live-session.repository';
 import {
   MediaRoomProvider,
   type IssueMediaCredentialsInput,
@@ -9,7 +10,10 @@ import { MediaError } from '../errors/media.errors';
 
 @Injectable()
 export class IssueMediaCredentialsUseCase {
-  constructor(private readonly mediaRoom: MediaRoomProvider) {}
+  constructor(
+    private readonly mediaRoom: MediaRoomProvider,
+    private readonly sessions: RoomSessionRepository,
+  ) {}
 
   async execute(input: IssueMediaCredentialsInput): Promise<MediaCredentials> {
     if (
@@ -19,9 +23,20 @@ export class IssueMediaCredentialsUseCase {
     ) {
       throw new MediaError('BAD_REQUEST', 'Media identity is incomplete');
     }
-    if (input.status !== SessionStatus.LIVE) {
+    const session = await this.sessions.findById(input.sessionId);
+    if (!session || session.status !== SessionStatus.LIVE) {
       throw new MediaError('SESSION_READ_ONLY', 'Session is read-only');
     }
-    return this.mediaRoom.issueCredentials(input);
+    const credentials = await this.mediaRoom.issueCredentials(input);
+    const canonicalSession = await this.sessions.findById(input.sessionId);
+    if (!canonicalSession || canonicalSession.status !== SessionStatus.LIVE) {
+      try {
+        await this.mediaRoom.closeRoom(input.sessionId);
+      } catch {
+        // Never expose credentials or provider details after canonical end.
+      }
+      throw new MediaError('SESSION_READ_ONLY', 'Session is read-only');
+    }
+    return credentials;
   }
 }

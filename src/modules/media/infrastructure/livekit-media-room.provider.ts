@@ -9,6 +9,9 @@ import {
 import { MediaError } from '../errors/media.errors';
 
 const DEFAULT_TOKEN_TTL_SECONDS = 600;
+const MAX_TOKEN_TTL_SECONDS = 600;
+const DEFAULT_REQUEST_TIMEOUT_SECONDS = 5;
+const MAX_REQUEST_TIMEOUT_SECONDS = 10;
 const MAX_PARTICIPANTS = 50;
 const EMPTY_TIMEOUT_SECONDS = 60;
 
@@ -17,6 +20,7 @@ interface LiveKitConfig {
   apiKey: string;
   apiSecret: string;
   tokenTtlSeconds: number;
+  requestTimeoutSeconds: number;
 }
 
 function providerCode(error: unknown): string {
@@ -119,6 +123,7 @@ export class LiveKitMediaRoomProvider extends MediaRoomProvider {
       host: config.url,
       apiKey: config.apiKey,
       secret: config.apiSecret,
+      requestTimeout: config.requestTimeoutSeconds,
     });
   }
 
@@ -134,12 +139,32 @@ export class LiveKitMediaRoomProvider extends MediaRoomProvider {
       this.configService.get<string>('LIVEKIT_TOKEN_TTL_SECONDS') ??
         DEFAULT_TOKEN_TTL_SECONDS,
     );
-    const tokenTtlSeconds =
+    const validConfiguredTtl =
       Number.isInteger(configuredTtl) && configuredTtl > 0
         ? configuredTtl
         : DEFAULT_TOKEN_TTL_SECONDS;
+    const tokenTtlSeconds = Math.min(validConfiguredTtl, MAX_TOKEN_TTL_SECONDS);
 
-    return { url, apiKey, apiSecret, tokenTtlSeconds };
+    const configuredRequestTimeout = Number(
+      this.configService.get<string>('LIVEKIT_REQUEST_TIMEOUT_SECONDS') ??
+        DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    );
+    const validRequestTimeout =
+      Number.isFinite(configuredRequestTimeout) && configuredRequestTimeout > 0
+        ? configuredRequestTimeout
+        : DEFAULT_REQUEST_TIMEOUT_SECONDS;
+    const requestTimeoutSeconds = Math.min(
+      validRequestTimeout,
+      MAX_REQUEST_TIMEOUT_SECONDS,
+    );
+
+    return {
+      url,
+      apiKey,
+      apiSecret,
+      tokenTtlSeconds,
+      requestTimeoutSeconds,
+    };
   }
 
   private roomName(sessionId: string): string {

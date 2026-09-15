@@ -52,6 +52,7 @@ const configuredValues: Record<string, string> = {
   LIVEKIT_API_KEY: 'api-key',
   LIVEKIT_API_SECRET: 'api-secret',
   LIVEKIT_TOKEN_TTL_SECONDS: '600',
+  LIVEKIT_REQUEST_TIMEOUT_SECONDS: '3',
 };
 
 function config(
@@ -93,6 +94,12 @@ describe('LiveKitMediaRoomProvider', () => {
       maxParticipants: 50,
       emptyTimeout: 60,
     });
+    expect(sdkMocks.liveKitApi).toHaveBeenCalledWith({
+      host: 'wss://media.example.test',
+      apiKey: 'api-key',
+      secret: 'api-secret',
+      requestTimeout: 3,
+    });
     expect(mockAccessToken).toHaveBeenCalledWith('api-key', 'api-secret', {
       identity: 'participant-1',
       name: 'Lia',
@@ -107,6 +114,21 @@ describe('LiveKitMediaRoomProvider', () => {
       canPublishData: false,
       canPublishSources: ['microphone', 'camera'],
     });
+  });
+
+  it('caps an unsafe configured token TTL', async () => {
+    const provider = new LiveKitMediaRoomProvider(
+      config({ ...configuredValues, LIVEKIT_TOKEN_TTL_SECONDS: '3600' }),
+    );
+
+    await expect(provider.issueCredentials(request)).resolves.toMatchObject({
+      expiresInSeconds: 600,
+    });
+    expect(mockAccessToken).toHaveBeenCalledWith(
+      'api-key',
+      'api-secret',
+      expect.objectContaining({ ttl: 600 }),
+    );
   });
 
   it('treats an existing room as a concurrent idempotent create', async () => {

@@ -1,5 +1,4 @@
 import { RoomParticipantRole } from '../../rooms/entities/room.entity';
-import { SessionStatus } from '../../sessions/entities/live-session.entity';
 
 export interface MediaCredentials {
   serverUrl: string;
@@ -9,7 +8,6 @@ export interface MediaCredentials {
 
 export interface IssueMediaCredentialsInput {
   sessionId: string;
-  status: SessionStatus;
   participant: {
     participantId: string;
     name: string;

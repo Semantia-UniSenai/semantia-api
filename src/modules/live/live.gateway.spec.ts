@@ -338,13 +338,33 @@ describe('LiveGateway media credentials', () => {
     });
     expect(issueMediaCredentials.execute).toHaveBeenCalledWith({
       sessionId: details.id,
-      status: SessionStatus.LIVE,
       participant: {
         participantId: kind === 'guest' ? 'guest:1' : 'account-1',
         name: 'Pessoa',
         role,
       },
     });
+  });
+
+  it('throttles repeated credential issuance per admitted socket', async () => {
+    const { gateway, socket, issueMediaCredentials } = setup(
+      RoomParticipantRole.HOST,
+    );
+    issueMediaCredentials.execute.mockResolvedValue(credentials);
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+
+    await (gateway as any).onMediaCredentials(socket);
+    await (gateway as any).onMediaCredentials(socket);
+    await (gateway as any).onMediaCredentials(socket);
+
+    await expect((gateway as any).onMediaCredentials(socket)).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'RATE_LIMITED',
+        message: 'Wait before requesting new media credentials',
+      },
+    });
+    expect(issueMediaCredentials.execute).toHaveBeenCalledTimes(3);
   });
 
   it('rejects an unauthenticated socket', async () => {

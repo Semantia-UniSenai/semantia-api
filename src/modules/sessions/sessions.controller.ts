@@ -37,7 +37,7 @@ import {
 } from './entities/live-session.entity';
 import { TranscriptSegment } from './entities/transcript-segment.entity';
 import { CreateGuestAccessUseCase } from './usecases/create-guest-access.usecase';
-import { EndSessionUseCase } from './usecases/end-session.usecase';
+
 import { GetSessionUseCase } from './usecases/get-session.usecase';
 import { GetTranscriptUseCase } from './usecases/get-transcript.usecase';
 import { ResolveJoinTokenUseCase } from './usecases/resolve-join-token.usecase';
@@ -50,7 +50,6 @@ const principalOf = (actor?: AuthUser) =>
 @Controller('sessions')
 export class SessionsController {
   constructor(
-    private readonly endSession: EndSessionUseCase,
     private readonly getSession: GetSessionUseCase,
     private readonly resolveJoinToken: ResolveJoinTokenUseCase,
     private readonly createGuestAccess: CreateGuestAccessUseCase,
@@ -94,22 +93,6 @@ export class SessionsController {
     @Body() dto: AudienceContextDto,
   ): Promise<RoomSession> {
     return this.updateContext.execute(actor.userId, sessionId, dto);
-  }
-
-  @Post(':id/end')
-  @HttpCode(200)
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({
-    operationId: 'endSession',
-    summary: 'End a session idempotently',
-  })
-  @ApiResponse({ status: 200, type: SessionDto })
-  end(
-    @CurrentUser() actor: AuthUser,
-    @Param('id') sessionId: string,
-  ): Promise<RoomSession> {
-    return this.endSession.execute(actor.userId, sessionId);
   }
 
   @Get(':id')

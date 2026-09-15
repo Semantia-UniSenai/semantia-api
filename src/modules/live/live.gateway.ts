@@ -68,6 +68,8 @@ const CODE_BY_STATUS: Record<number, string> = {
   404: 'NOT_FOUND',
   409: 'SESSION_READ_ONLY',
 };
+const MEDIA_CREDENTIAL_LIMIT = 3;
+const MEDIA_CREDENTIAL_WINDOW_MS = 10_000;
 
 @WebSocketGateway({
   namespace: '/live',
@@ -86,6 +88,7 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
     string,
     Map<string, AdmissionEntry>
   >();
+  private readonly mediaCredentialRequests = new Map<string, number[]>();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -152,6 +155,7 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   }
 
   handleDisconnect(socket: LiveSocket): void {
+    this.mediaCredentialRequests.delete(socket.id);
     this.removeFromAdmissionQueue(socket);
     this.dropSocket(socket);
   }
@@ -242,10 +246,15 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   @SubscribeMessage('media:credentials')
   async onMediaCredentials(socket: LiveSocket): Promise<Ack<MediaCredentials>> {
     try {
-      const { identity, sessionId, status } = this.requireParticipant(socket);
+      const { identity, sessionId } = this.requireParticipant(socket);
+      if (!this.consumeMediaCredentialRequest(socket.id)) {
+        return this.errorAck(
+          'RATE_LIMITED',
+          'Wait before requesting new media credentials',
+        );
+      }
       const credentials = await this.issueMediaCredentials.execute({
         sessionId,
-        status,
         participant: {
           participantId: identity.participantId,
           name: identity.name,
@@ -619,6 +628,20 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
         }
       }
     }
+  }
+
+  private consumeMediaCredentialRequest(socketId: string): boolean {
+    const now = Date.now();
+    const recent = (this.mediaCredentialRequests.get(socketId) ?? []).filter(
+      (requestedAt) => now - requestedAt < MEDIA_CREDENTIAL_WINDOW_MS,
+    );
+    if (recent.length >= MEDIA_CREDENTIAL_LIMIT) {
+      this.mediaCredentialRequests.set(socketId, recent);
+      return false;
+    }
+    recent.push(now);
+    this.mediaCredentialRequests.set(socketId, recent);
+    return true;
   }
 
   private requireIdentity(socket: LiveSocket): SocketIdentity {
