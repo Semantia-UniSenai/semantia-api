@@ -14,6 +14,7 @@ export class RoomSession {
   status: SessionStatus;
   requiresApproval: boolean;
   audienceContext: AudienceContext | null;
+  audienceContextVersion: number;
   createdAt: Date;
   startedAt: Date | null;
   endedAt: Date | null;

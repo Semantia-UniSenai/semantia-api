@@ -103,6 +103,20 @@ describe('generic communication rooms (e2e)', () => {
 
   it('opens an instant meeting, invites a guest and ends it without exposing preparation', async () => {
     const unique = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    await request(baseUrl)
+      .get('/api/health')
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.transcriptAdaptation).toEqual({
+          enabled: false,
+          provider: 'disabled',
+          state: 'disabled',
+          model: 'openai/gpt-oss-20b',
+          promptVersion: 'pt-br-accessible-v1',
+        });
+        expect(body.transcriptAdaptation).not.toHaveProperty('reason');
+        expect(JSON.stringify(body)).not.toMatch(/api.?key|secret/i);
+      });
     const hostSignup = await request(baseUrl)
       .post('/api/auth/signup')
       .send({
@@ -128,6 +142,49 @@ describe('generic communication rooms (e2e)', () => {
       status: 'LIVE',
       startedAt: expect.any(String),
     });
+
+    await request(baseUrl)
+      .patch(`/api/sessions/${meeting.meetingId}/context`)
+      .set('Authorization', `Bearer ${hostToken}`)
+      .send({
+        meetingType: 'empresa',
+        ageRange: 'adultos',
+        portugueseFamiliarity: 'media',
+        domain: 'Segurança operacional',
+        simplificationLevel: 'moderada',
+      })
+      .expect(200)
+      .expect(({ body }) =>
+        expect(body).toMatchObject({
+          status: 'LIVE',
+          audienceContextVersion: 1,
+          audienceContext: {
+            meetingType: 'empresa',
+            domain: 'Segurança operacional',
+          },
+        }),
+      );
+
+    const concurrentContextUpdates = await Promise.all(
+      ['Segurança industrial', 'Evacuação preventiva'].map((domain) =>
+        request(baseUrl)
+          .patch(`/api/sessions/${meeting.meetingId}/context`)
+          .set('Authorization', `Bearer ${hostToken}`)
+          .send({
+            meetingType: 'empresa',
+            ageRange: 'adultos',
+            portugueseFamiliarity: 'media',
+            domain,
+            simplificationLevel: 'moderada',
+          })
+          .expect(200),
+      ),
+    );
+    expect(
+      concurrentContextUpdates
+        .map(({ body }) => body.audienceContextVersion as number)
+        .sort((left, right) => left - right),
+    ).toEqual([2, 3]);
 
     await request(baseUrl)
       .get('/api/rooms')
@@ -191,6 +248,7 @@ describe('generic communication rooms (e2e)', () => {
       }),
     ).toEqual({ ok: true });
     expect(await hostState).toMatchObject({
+      session: { audienceContextVersion: 3 },
       canManage: true,
       self: { role: 'HOST' },
     });
@@ -211,6 +269,7 @@ describe('generic communication rooms (e2e)', () => {
     });
 
     const transcriptEvent = waitFor<Json>(guestSocket, 'transcript:final');
+    const adaptedEvent = waitFor<Json>(guestSocket, 'transcript:adapted');
     expect(
       await emitAck(hostSocket, 'transcription:audio', {
         clientSegmentId: `segment-${unique}`,
@@ -231,10 +290,23 @@ describe('generic communication rooms (e2e)', () => {
         durationMs: 1_000,
       }),
     );
-    expect(await transcriptEvent).toMatchObject({
+    const literal = await transcriptEvent;
+    expect(literal).toMatchObject({
+      id: expect.any(String),
       seq: 1,
       text: 'comunicação preservada.',
       cleaningStrategyVersion: 'pt-br-conservative-v1',
+    });
+    expect(await adaptedEvent).toMatchObject({
+      segmentId: literal.id,
+      sessionId: meeting.meetingId,
+      seq: literal.seq,
+      adaptation: {
+        text: literal.text,
+        status: 'bypassed',
+        failureCode: 'DISABLED',
+        automatic: true,
+      },
     });
 
     const discardedEvents: Json[] = [];
@@ -326,6 +398,12 @@ describe('generic communication rooms (e2e)', () => {
             seq: 1,
             text: 'comunicação preservada.',
             cleaningStrategyVersion: 'pt-br-conservative-v1',
+            adaptation: expect.objectContaining({
+              text: 'comunicação preservada.',
+              status: 'bypassed',
+              failureCode: 'DISABLED',
+              automatic: true,
+            }),
           }),
         ]),
       );

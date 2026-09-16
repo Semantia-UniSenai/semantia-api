@@ -38,7 +38,9 @@ export class UpdateSessionContextUseCase {
     }
 
     if (session.status === SessionStatus.ENDED) {
-      throw new ConflictException('Cannot update an ended session');
+      throw new ConflictException(
+        'Context cannot be changed after the session has ended',
+      );
     }
 
     const { requiresApproval, ...contextFields } = dto;

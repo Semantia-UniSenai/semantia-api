@@ -56,6 +56,7 @@ export const buildSession = (over: Partial<RoomSession> = {}): RoomSession =>
     status: SessionStatus.PREPARING,
     requiresApproval: false,
     audienceContext: null,
+    audienceContextVersion: 0,
     createdAt: new Date('2026-07-30T12:00:00Z'),
     startedAt: null,
     endedAt: null,
