@@ -418,18 +418,30 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
           cleaningStrategyVersion: result.segment.cleaningStrategyVersion,
           at: result.segment.createdAt,
         });
-        void this.adaptTranscript
-          .enqueue(result.segment)
-          .then(({ event }) => {
-            this.server.to(roomOf(sessionId)).emit('transcript:adapted', event);
-          })
-          .catch((error: unknown) => {
-            this.logger.warn({
-              event: 'transcript_adaptation_failed',
-              errorType:
-                error instanceof Error ? error.name : 'UnknownAdaptationError',
+        if (!result.adaptationContext) {
+          this.logger.warn({ event: 'transcript_adaptation_context_missing' });
+        } else {
+          void this.adaptTranscript
+            .enqueue(
+              result.segment,
+              result.adaptationContext,
+              result.adaptationInputQuality,
+            )
+            .then(({ event }) => {
+              this.server
+                .to(roomOf(sessionId))
+                .emit('transcript:adapted', event);
+            })
+            .catch((error: unknown) => {
+              this.logger.warn({
+                event: 'transcript_adaptation_failed',
+                errorType:
+                  error instanceof Error
+                    ? error.name
+                    : 'UnknownAdaptationError',
+              });
             });
-          });
+        }
       }
       socket.emit('transcription:status', {
         clientSegmentId,

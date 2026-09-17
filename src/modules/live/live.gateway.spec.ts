@@ -157,6 +157,10 @@ describe('LiveGateway generic identities', () => {
       engine: 'faster-whisper',
       model: 'small',
       inferenceMs: 42,
+      adaptationContext: {
+        context: details.audienceContext,
+        contextVersion: details.audienceContextVersion,
+      },
     });
 
     await expect(
@@ -207,6 +211,10 @@ describe('LiveGateway generic identities', () => {
       cleaningStrategyVersion: 'pt-br-conservative-v1',
       createdAt: new Date(),
     };
+    const adaptationContext = {
+      context: details.audienceContext,
+      contextVersion: details.audienceContextVersion,
+    };
     transcribeAudio.execute.mockResolvedValue({
       segment,
       created: true,
@@ -214,6 +222,8 @@ describe('LiveGateway generic identities', () => {
       engine: 'faster-whisper',
       model: 'small',
       inferenceMs: 42,
+      adaptationContext,
+      adaptationInputQuality: 'ACCEPTABLE',
     });
     let completeAdaptation!: (value: unknown) => void;
     adaptTranscript.enqueue.mockImplementation(() => {
@@ -229,6 +239,11 @@ describe('LiveGateway generic identities', () => {
     await expect(
       gateway.onTranscriptionAudio(socket as never, pcmPayload),
     ).resolves.toMatchObject({ ok: true, seq: 1 });
+    expect(adaptTranscript.enqueue).toHaveBeenCalledWith(
+      segment,
+      adaptationContext,
+      'ACCEPTABLE',
+    );
     expect(serverEmit).not.toHaveBeenCalledWith(
       'transcript:adapted',
       expect.anything(),

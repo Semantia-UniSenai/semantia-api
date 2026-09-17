@@ -27,6 +27,11 @@ export class SessionDto {
   })
   audienceContextVersion: number;
 
+  @ApiProperty({
+    description: 'Whether new participants require host approval',
+  })
+  requiresApproval: boolean;
+
   @ApiProperty()
   createdAt: Date;
 
@@ -81,7 +86,7 @@ export class TranscriptSegmentAdaptationDto {
   @ApiProperty({ example: 2 })
   contextVersion: number;
 
-  @ApiProperty({ example: 'pt-br-accessible-v1' })
+  @ApiProperty({ example: 'pt-br-accessible-v2' })
   promptVersion: string;
 
   @ApiProperty({ example: 'groq' })

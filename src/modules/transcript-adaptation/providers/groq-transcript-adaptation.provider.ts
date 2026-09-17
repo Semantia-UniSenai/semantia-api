@@ -9,6 +9,7 @@ import {
   TranscriptAdaptationProviderResult,
 } from '../contracts/transcript-adaptation.types';
 import { buildPtBrAccessibleV1Prompt } from '../prompts/pt-br-accessible-v1.prompt';
+import { buildPtBrAccessibleV2Prompt } from '../prompts/pt-br-accessible-v2.prompt';
 import {
   adaptationOutputJsonSchema,
   parseAdaptationOutput,
@@ -43,7 +44,10 @@ export class GroqTranscriptAdaptationProvider extends TranscriptAdaptationProvid
     input: TranscriptAdaptationInput,
     signal: AbortSignal,
   ): Promise<TranscriptAdaptationProviderResult> {
-    const prompt = buildPtBrAccessibleV1Prompt(input);
+    const prompt =
+      this.config.promptVersion === 'pt-br-accessible-v1'
+        ? buildPtBrAccessibleV1Prompt(input)
+        : buildPtBrAccessibleV2Prompt(input);
     let completion: ChatCompletion;
     try {
       completion = await this.completions.create(

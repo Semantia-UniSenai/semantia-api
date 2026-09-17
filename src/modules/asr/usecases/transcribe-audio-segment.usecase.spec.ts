@@ -100,6 +100,7 @@ describe('TranscribeAudioSegmentUseCase', () => {
       engine: 'faster-whisper',
       model: 'small',
       inferenceMs: 42,
+      adaptationInputQuality: 'ACCEPTABLE',
     });
     expect(asr.transcribe).toHaveBeenCalledWith({
       requestId: audio.clientSegmentId,
@@ -114,6 +115,69 @@ describe('TranscribeAudioSegmentUseCase', () => {
       'Comunicação acessível',
       audio.clientSegmentId,
     );
+  });
+
+  it('forwards the context snapshot captured with a newly created final', async () => {
+    const { useCase, transcripts, append } = setup();
+    const audienceContext = {
+      meetingType: 'empresa' as const,
+      ageRange: 'adultos' as const,
+      portugueseFamiliarity: 'media' as const,
+      domain: 'Planejamento',
+      simplificationLevel: 'moderada' as const,
+    };
+    const segment = new TranscriptSegment({
+      id: 'transcript-context',
+      sessionId: 'session-1',
+      clientSegmentId: audio.clientSegmentId,
+      seq: 2,
+      text: 'Comunicação acessível',
+      cleaningStrategyVersion: 'pt-br-conservative-v1',
+      createdAt: new Date(),
+    });
+    const adaptationContext = { context: audienceContext, contextVersion: 7 };
+    transcripts.findByClientSegmentId.mockResolvedValue(null);
+    append.execute.mockResolvedValue({
+      segment,
+      created: true,
+      adaptationContext,
+    });
+
+    await expect(
+      useCase.execute('host-1', 'session-1', audio),
+    ).resolves.toMatchObject({ segment, created: true, adaptationContext });
+  });
+
+  it('marca como suspeita uma transcrição com densidade incompatível com fala normal', async () => {
+    const { useCase, transcripts, asr, append } = setup();
+    const segment = new TranscriptSegment({
+      id: 'transcript-dense',
+      sessionId: 'session-1',
+      clientSegmentId: audio.clientSegmentId,
+      seq: 3,
+      text: 'um dois três quatro cinco seis sete',
+      cleaningStrategyVersion: 'pt-br-conservative-v1',
+      createdAt: new Date(),
+    });
+    transcripts.findByClientSegmentId.mockResolvedValue(null);
+    asr.transcribe.mockResolvedValue({
+      text: segment.text,
+      engine: 'faster-whisper',
+      model: 'small',
+      inferenceMs: 42,
+    });
+    append.execute.mockResolvedValue({
+      segment,
+      created: true,
+      adaptationContext: { context: null, contextVersion: 0 },
+    });
+
+    await expect(
+      useCase.execute('host-1', 'session-1', audio),
+    ).resolves.toMatchObject({
+      segment,
+      adaptationInputQuality: 'SUSPECT_DENSITY',
+    });
   });
 
   it('treats an empty ASR result as successful no-speech without persistence', async () => {

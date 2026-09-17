@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { RoomParticipantRole } from '../../rooms/entities/room.entity';
 import { RoomPermissionService } from '../../rooms/room-permission.service';
 import { RoomRepository } from '../../rooms/repositories/room.repository';
+import { AudienceContextSnapshot } from '../entities/audience-context.entity';
 import { SessionStatus } from '../entities/live-session.entity';
 import { RoomSessionRepository } from '../repositories/live-session.repository';
 import {
@@ -19,6 +20,10 @@ import { cleanCanonicalTranscript } from './disfluencies';
 
 export const MAX_TRANSCRIPT_SEGMENT_LENGTH = 5000;
 const CLIENT_SEGMENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$/;
+
+export interface AppendCanonicalTranscriptResult extends AppendTranscriptResult {
+  adaptationContext: AudienceContextSnapshot;
+}
 
 @Injectable()
 export class AppendTranscriptSegmentUseCase {
@@ -34,7 +39,7 @@ export class AppendTranscriptSegmentUseCase {
     sessionId: string,
     text: string,
     clientSegmentId?: string,
-  ): Promise<AppendTranscriptResult | null> {
+  ): Promise<AppendCanonicalTranscriptResult | null> {
     const trimmed = text?.trim();
     if (!trimmed) {
       throw new BadRequestException('Transcript text must not be empty');
@@ -62,13 +67,19 @@ export class AppendTranscriptSegmentUseCase {
       throw new ConflictException('Session is read-only');
     }
     const canonical = cleanCanonicalTranscript(trimmed);
-    return canonical.text
-      ? this.transcripts.append(
-          sessionId,
-          canonical.text,
-          idempotencyKey,
-          canonical.cleaningStrategyVersion,
-        )
-      : null;
+    if (!canonical.text) return null;
+    const appended = await this.transcripts.append(
+      sessionId,
+      canonical.text,
+      idempotencyKey,
+      canonical.cleaningStrategyVersion,
+    );
+    return {
+      ...appended,
+      adaptationContext: {
+        context: session.audienceContext,
+        contextVersion: session.audienceContextVersion,
+      },
+    };
   }
 }

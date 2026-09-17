@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 export type TranscriptAdaptationProviderName = 'disabled' | 'fake' | 'groq';
+export type TranscriptAdaptationPromptVersion =
+  'pt-br-accessible-v1' | 'pt-br-accessible-v2';
 export type TranscriptAdaptationProviderState =
   'disabled' | 'ready' | 'misconfigured';
 
@@ -10,7 +12,7 @@ export type TranscriptAdaptationPublicState = {
   state: TranscriptAdaptationProviderState;
   reason?: 'missing-groq-api-key';
   model: string;
-  promptVersion: string;
+  promptVersion: TranscriptAdaptationPromptVersion;
   timeoutMs: number;
   maxRetries: number;
   maxConcurrency: number;
@@ -45,9 +47,8 @@ const envSchema = z.object({
     .default('disabled'),
   TRANSCRIPT_ADAPTATION_MODEL: z.string().min(1).default('openai/gpt-oss-20b'),
   TRANSCRIPT_ADAPTATION_PROMPT_VERSION: z
-    .string()
-    .min(1)
-    .default('pt-br-accessible-v1'),
+    .enum(['pt-br-accessible-v1', 'pt-br-accessible-v2'])
+    .default('pt-br-accessible-v2'),
   TRANSCRIPT_ADAPTATION_TIMEOUT_MS: integer(2_500, 1, 30_000),
   TRANSCRIPT_ADAPTATION_MAX_RETRIES: integer(1, 0, 1),
   TRANSCRIPT_ADAPTATION_MAX_CONCURRENCY: integer(2, 1, 32),
@@ -62,7 +63,7 @@ export class TranscriptAdaptationRuntimeConfig {
   readonly enabled: boolean;
   readonly provider: TranscriptAdaptationProviderName;
   readonly model: string;
-  readonly promptVersion: string;
+  readonly promptVersion: TranscriptAdaptationPromptVersion;
   readonly timeoutMs: number;
   readonly maxRetries: number;
   readonly maxConcurrency: number;

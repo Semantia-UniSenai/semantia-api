@@ -225,6 +225,37 @@ describe('AdaptTranscriptSegmentUseCase', () => {
     expect(result.event.adaptation.text).toBe(segment.text);
   });
 
+  it.each(['ambiguous', 'preservation-risk'] as const)(
+    'risco %s declarado na saída faz fallback para o literal',
+    async (risk) => {
+      const provider = new FakeTranscriptAdaptationProvider({
+        mode: 'success',
+        output: {
+          adaptedText: 'A reunião será amanhã.',
+          decision: 'adapted',
+          risk,
+        },
+      });
+      const { useCase, repository } = buildUseCase(provider);
+
+      const result = await useCase.execute({
+        segment,
+        context,
+        contextVersion: 2,
+      });
+
+      expect(repository.completeSuccess).not.toHaveBeenCalled();
+      expect(repository.completeFailure).toHaveBeenCalledWith(
+        segment.id,
+        expect.objectContaining({
+          status: TranscriptAdaptationStatus.FALLBACK,
+          failureCode: TranscriptAdaptationFailureCode.PRESERVATION_FAILED,
+        }),
+      );
+      expect(result.event.adaptation.text).toBe(segment.text);
+    },
+  );
+
   it('sucesso validado persiste adaptação e input mínimo', async () => {
     const provider = new FakeTranscriptAdaptationProvider({
       mode: 'success',
@@ -248,7 +279,7 @@ describe('AdaptTranscriptSegmentUseCase', () => {
         language: 'pt-BR',
         contextVersion: 2,
         context,
-        promptVersion: 'pt-br-accessible-v1',
+        promptVersion: 'pt-br-accessible-v2',
       },
     ]);
     expect(repository.completeSuccess).toHaveBeenCalledWith(

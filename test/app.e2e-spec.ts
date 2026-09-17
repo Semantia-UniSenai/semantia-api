@@ -7,6 +7,10 @@ import { AsrClient } from '../src/modules/asr/asr-client';
 
 jest.setTimeout(30_000);
 
+const adaptationEnabled =
+  process.env.TRANSCRIPT_ADAPTATION_ENABLED === 'true' &&
+  process.env.TRANSCRIPT_ADAPTATION_PROVIDER === 'fake';
+
 type Json = Record<string, any>;
 
 type Ack =
@@ -108,11 +112,11 @@ describe('generic communication rooms (e2e)', () => {
       .expect(200)
       .expect(({ body }) => {
         expect(body.transcriptAdaptation).toEqual({
-          enabled: false,
-          provider: 'disabled',
-          state: 'disabled',
+          enabled: adaptationEnabled,
+          provider: adaptationEnabled ? 'fake' : 'disabled',
+          state: adaptationEnabled ? 'ready' : 'disabled',
           model: 'openai/gpt-oss-20b',
-          promptVersion: 'pt-br-accessible-v1',
+          promptVersion: 'pt-br-accessible-v2',
         });
         expect(body.transcriptAdaptation).not.toHaveProperty('reason');
         expect(JSON.stringify(body)).not.toMatch(/api.?key|secret/i);
@@ -303,8 +307,8 @@ describe('generic communication rooms (e2e)', () => {
       seq: literal.seq,
       adaptation: {
         text: literal.text,
-        status: 'bypassed',
-        failureCode: 'DISABLED',
+        status: adaptationEnabled ? 'succeeded' : 'bypassed',
+        failureCode: adaptationEnabled ? null : 'DISABLED',
         automatic: true,
       },
     });
@@ -400,8 +404,8 @@ describe('generic communication rooms (e2e)', () => {
             cleaningStrategyVersion: 'pt-br-conservative-v1',
             adaptation: expect.objectContaining({
               text: 'comunicação preservada.',
-              status: 'bypassed',
-              failureCode: 'DISABLED',
+              status: adaptationEnabled ? 'succeeded' : 'bypassed',
+              failureCode: adaptationEnabled ? null : 'DISABLED',
               automatic: true,
             }),
           }),

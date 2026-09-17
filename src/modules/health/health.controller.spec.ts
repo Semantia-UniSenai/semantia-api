@@ -23,7 +23,7 @@ describe('HealthController', () => {
         enabled: true,
         provider: 'groq',
         model: 'openai/gpt-oss-20b',
-        promptVersion: 'pt-br-accessible-v1',
+        promptVersion: 'pt-br-accessible-v2',
         state: 'misconfigured',
       },
     });

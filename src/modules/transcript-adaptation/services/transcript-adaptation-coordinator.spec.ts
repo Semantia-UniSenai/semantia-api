@@ -23,6 +23,7 @@ const session = new RoomSession({
   roomId: 'room-1',
   joinToken: 'not-used-by-adaptation',
   status: SessionStatus.LIVE,
+  requiresApproval: false,
   audienceContext: context,
   audienceContextVersion: 3,
   createdAt: new Date('2026-08-10T12:00:00Z'),
@@ -55,24 +56,27 @@ const build = (maxConcurrency = 1, maxQueue = 2) => {
   const useCase = {
     execute: jest.fn(),
     fallback: jest.fn(),
+    bypass: jest.fn(),
   } as unknown as jest.Mocked<AdaptTranscriptSegmentUseCase>;
   const queue = new TranscriptAdaptationQueue({ maxConcurrency, maxQueue });
   return {
     sessions,
     useCase,
-    coordinator: new TranscriptAdaptationCoordinator(sessions, useCase, queue),
+    coordinator: new TranscriptAdaptationCoordinator(useCase, queue),
   };
 };
 
 describe('TranscriptAdaptationCoordinator', () => {
-  it('lê contexto atual da sessão e envia somente segmento e contexto ao usecase', async () => {
+  it('usa o snapshot capturado com o segmento sem reler contexto depois', async () => {
     const { coordinator, sessions, useCase } = build();
     const result = { event: { segmentId: segment.id } };
     useCase.execute.mockResolvedValue(result as never);
 
-    await expect(coordinator.enqueue(segment)).resolves.toBe(result);
+    await expect(
+      coordinator.enqueue(segment, { context, contextVersion: 3 }),
+    ).resolves.toBe(result);
 
-    expect(sessions.findById).toHaveBeenCalledWith(segment.sessionId);
+    expect(sessions.findById).not.toHaveBeenCalled();
     expect(useCase.execute).toHaveBeenCalledWith({
       segment,
       context,
@@ -80,13 +84,34 @@ describe('TranscriptAdaptationCoordinator', () => {
     });
   });
 
+  it('materializa bypass sem provider quando a entrada ASR é suspeita', async () => {
+    const { coordinator, useCase } = build();
+    const bypass = { event: { segmentId: segment.id } };
+    useCase.bypass.mockResolvedValue(bypass as never);
+
+    await expect(
+      coordinator.enqueue(
+        segment,
+        { context, contextVersion: 3 },
+        'SUSPECT_DENSITY',
+      ),
+    ).resolves.toBe(bypass);
+
+    expect(useCase.execute).not.toHaveBeenCalled();
+    expect(useCase.bypass).toHaveBeenCalledWith(
+      { segment, context, contextVersion: 3 },
+      TranscriptAdaptationFailureCode.SUSPECT_INPUT,
+    );
+  });
+
   it('compartilha a mesma Promise para o mesmo segmento concorrente', async () => {
     const { coordinator, useCase } = build();
     const controlled = deferred<never>();
     useCase.execute.mockReturnValue(controlled.promise);
 
-    const first = coordinator.enqueue(segment);
-    const duplicate = coordinator.enqueue(segment);
+    const snapshot = { context, contextVersion: 3 };
+    const first = coordinator.enqueue(segment, snapshot);
+    const duplicate = coordinator.enqueue(segment, snapshot);
 
     expect(duplicate).toBe(first);
     await Promise.resolve();
@@ -105,8 +130,9 @@ describe('TranscriptAdaptationCoordinator', () => {
     const fallbackResult = { event: { segmentId: otherSegment.id } };
     useCase.fallback.mockResolvedValue(fallbackResult as never);
 
-    void coordinator.enqueue(segment);
-    await expect(coordinator.enqueue(otherSegment)).resolves.toBe(
+    const snapshot = { context, contextVersion: 3 };
+    void coordinator.enqueue(segment, snapshot);
+    await expect(coordinator.enqueue(otherSegment, snapshot)).resolves.toBe(
       fallbackResult,
     );
 

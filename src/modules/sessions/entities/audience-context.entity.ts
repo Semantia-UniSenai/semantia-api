@@ -11,3 +11,8 @@ export interface AudienceContext {
   domain: string;
   simplificationLevel: SimplificationLevel;
 }
+
+export interface AudienceContextSnapshot {
+  context: AudienceContext | null;
+  contextVersion: number;
+}

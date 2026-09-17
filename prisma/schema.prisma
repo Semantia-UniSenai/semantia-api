@@ -37,6 +37,7 @@ enum TranscriptAdaptationFailureCode {
   MISCONFIGURED
   NO_CONTEXT
   HIGH_RISK
+  SUSPECT_INPUT
   QUEUE_FULL
   CIRCUIT_OPEN
   TIMEOUT

@@ -146,6 +146,15 @@ export class AdaptTranscriptSegmentUseCase {
           usage,
         );
       }
+      if (output.risk !== 'none') {
+        return this.completeFallback(
+          input.segment,
+          TranscriptAdaptationFailureCode.PRESERVATION_FAILED,
+          execution.attemptCount,
+          Date.now() - startedAt,
+          usage,
+        );
+      }
       const preservation = validateSemanticPreservation(
         input.segment.text,
         output.adaptedText,
@@ -215,6 +224,27 @@ export class AdaptTranscriptSegmentUseCase {
           model: this.provider.modelName,
         }));
     return this.completeFallback(input.segment, failureCode, 0, 0);
+  }
+
+  async bypass(
+    input: AdaptTranscriptSegmentInput,
+    failureCode: TranscriptAdaptationFailureCode,
+  ): Promise<AdaptTranscriptSegmentResult> {
+    const existing = await this.adaptations.findBySegmentId(input.segment.id);
+    if (existing && existing.status !== TranscriptAdaptationStatus.PENDING) {
+      return this.toResult(input.segment, existing);
+    }
+    await (existing
+      ? Promise.resolve(existing)
+      : this.adaptations.createPending({
+          transcriptSegmentId: input.segment.id,
+          contextVersion: input.contextVersion,
+          contextSnapshot: input.context,
+          promptVersion: this.config.promptVersion,
+          provider: this.provider.providerName,
+          model: this.provider.modelName,
+        }));
+    return this.completeBypass(input.segment, failureCode);
   }
 
   private async completeBypass(

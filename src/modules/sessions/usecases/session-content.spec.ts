@@ -40,7 +40,11 @@ describe('live room content rules', () => {
       permissions,
       transcripts,
     ).execute('host-1', 'session-1', 'né, vamos começar.', 'segment-client-1');
-    expect(result).toEqual({ segment, created: true });
+    expect(result).toEqual({
+      segment,
+      created: true,
+      adaptationContext: { context: null, contextVersion: 0 },
+    });
     expect(transcripts.append).toHaveBeenCalledWith(
       'session-1',
       'vamos começar.',

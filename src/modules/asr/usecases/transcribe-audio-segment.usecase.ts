@@ -8,11 +8,16 @@ import { RoomParticipantRole } from '../../rooms/entities/room.entity';
 import { RoomPermissionService } from '../../rooms/room-permission.service';
 import { RoomRepository } from '../../rooms/repositories/room.repository';
 import { SessionStatus } from '../../sessions/entities/live-session.entity';
+import { AudienceContextSnapshot } from '../../sessions/entities/audience-context.entity';
 import { TranscriptSegment } from '../../sessions/entities/transcript-segment.entity';
 import { RoomSessionRepository } from '../../sessions/repositories/live-session.repository';
 import { TranscriptRepository } from '../../sessions/repositories/transcript.repository';
 import { AppendTranscriptSegmentUseCase } from '../../sessions/usecases/append-transcript-segment.usecase';
 import { AsrClient } from '../asr-client';
+import {
+  AsrAdaptationInputQuality,
+  assessAsrAdaptationInputQuality,
+} from '../asr-adaptation-input-quality';
 import { AudioSegmentInput } from '../audio-segment';
 import { SessionTranscriptionCoordinator } from '../session-transcription-coordinator';
 
@@ -23,6 +28,8 @@ export interface TranscribedAudioSegment {
   engine: string | null;
   model: string | null;
   inferenceMs: number | null;
+  adaptationContext?: AudienceContextSnapshot;
+  adaptationInputQuality?: AsrAdaptationInputQuality;
 }
 
 const NO_SPEECH_REPLAY_TTL_MS = 120_000;
@@ -124,6 +131,17 @@ export class TranscribeAudioSegmentUseCase {
           engine: result.engine,
           model: result.model,
           inferenceMs: result.inferenceMs,
+          ...(appended?.adaptationContext
+            ? { adaptationContext: appended.adaptationContext }
+            : {}),
+          ...(appended?.segment
+            ? {
+                adaptationInputQuality: assessAsrAdaptationInputQuality(
+                  appended.segment.text,
+                  audio.durationMs,
+                ),
+              }
+            : {}),
         };
       },
     );

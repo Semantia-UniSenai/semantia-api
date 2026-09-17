@@ -21,6 +21,7 @@ describe('loadTranscriptAdaptationConfig', () => {
       provider: 'disabled',
       state: 'disabled',
       model: 'openai/gpt-oss-20b',
+      promptVersion: 'pt-br-accessible-v2',
       timeoutMs: 2_500,
       maxRetries: 1,
       maxConcurrency: 2,
@@ -75,6 +76,14 @@ describe('loadTranscriptAdaptationConfig', () => {
         TRANSCRIPT_ADAPTATION_ENABLED: 'true',
         TRANSCRIPT_ADAPTATION_PROVIDER: 'fake',
         [name]: value,
+      }),
+    ).toThrow();
+  });
+
+  it('rejeita versão de prompt sem implementação correspondente', () => {
+    expect(() =>
+      loadTranscriptAdaptationConfig({
+        TRANSCRIPT_ADAPTATION_PROMPT_VERSION: 'invented-v99',
       }),
     ).toThrow();
   });

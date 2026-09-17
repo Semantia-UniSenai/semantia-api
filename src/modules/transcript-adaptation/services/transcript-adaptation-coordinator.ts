@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { AsrAdaptationInputQuality } from '../../asr/asr-adaptation-input-quality';
+import { AudienceContextSnapshot } from '../../sessions/entities/audience-context.entity';
 import { TranscriptSegment } from '../../sessions/entities/transcript-segment.entity';
-import { RoomSessionRepository } from '../../sessions/repositories/live-session.repository';
 import { TranscriptAdaptationFailureCode } from '../entities/transcript-adaptation.entity';
 import {
   AdaptTranscriptSegmentInput,
@@ -20,31 +21,44 @@ export class TranscriptAdaptationCoordinator {
   >();
 
   constructor(
-    private readonly sessions: RoomSessionRepository,
     private readonly useCase: AdaptTranscriptSegmentUseCase,
     private readonly queue: TranscriptAdaptationQueue,
   ) {}
 
-  enqueue(segment: TranscriptSegment): Promise<AdaptTranscriptSegmentResult> {
+  enqueue(
+    segment: TranscriptSegment,
+    snapshot: AudienceContextSnapshot,
+    inputQuality: AsrAdaptationInputQuality = AsrAdaptationInputQuality.ACCEPTABLE,
+  ): Promise<AdaptTranscriptSegmentResult> {
     const existing = this.scheduled.get(segment.id);
     if (existing) return existing;
 
-    const scheduled = this.schedule(segment).finally(() => {
-      this.scheduled.delete(segment.id);
-    });
+    const scheduled = this.schedule(segment, snapshot, inputQuality).finally(
+      () => {
+        this.scheduled.delete(segment.id);
+      },
+    );
     this.scheduled.set(segment.id, scheduled);
     return scheduled;
   }
 
   private async schedule(
     segment: TranscriptSegment,
+    snapshot: AudienceContextSnapshot,
+    inputQuality: AsrAdaptationInputQuality,
   ): Promise<AdaptTranscriptSegmentResult> {
-    const session = await this.sessions.findById(segment.sessionId);
     const input: AdaptTranscriptSegmentInput = {
       segment,
-      context: session?.audienceContext ?? null,
-      contextVersion: session?.audienceContextVersion ?? 0,
+      context: snapshot.context,
+      contextVersion: snapshot.contextVersion,
     };
+
+    if (inputQuality !== AsrAdaptationInputQuality.ACCEPTABLE) {
+      return this.useCase.bypass(
+        input,
+        TranscriptAdaptationFailureCode.SUSPECT_INPUT,
+      );
+    }
 
     try {
       return await this.queue.enqueue(segment.id, () =>

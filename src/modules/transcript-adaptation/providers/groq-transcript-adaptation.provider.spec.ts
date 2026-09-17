@@ -75,6 +75,8 @@ describe('GroqTranscriptAdaptationProvider', () => {
     });
     expect(request).not.toHaveProperty('tools');
     expect(request).not.toHaveProperty('reasoning_format');
+    expect(JSON.stringify(request.messages)).toContain('Familiaridade média');
+    expect(JSON.stringify(request.messages)).toContain('pt-br-accessible-v2');
     expect(options.signal).toBe(controller.signal);
     expect(result).toEqual({
       output: {

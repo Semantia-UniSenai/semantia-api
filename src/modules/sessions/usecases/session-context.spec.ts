@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   NotFoundException,
@@ -121,6 +122,19 @@ describe('UpdateSessionContextUseCase', () => {
     });
     expect(result.audienceContext).toEqual(context);
     expect(result.audienceContextVersion).toBe(2);
+  });
+
+  it('rejeita contexto inicial parcial para não criar snapshot inválido', async () => {
+    const { useCase, sessions, rooms } = buildUseCase();
+    sessions.findById.mockResolvedValue(
+      buildSession({ status: SessionStatus.LIVE, audienceContext: null }),
+    );
+    rooms.getParticipantRole.mockResolvedValue(RoomParticipantRole.HOST);
+
+    await expect(
+      useCase.execute('host-1', 'session-1', { domain: 'Matemática' }),
+    ).rejects.toThrow(BadRequestException);
+    expect(sessions.updateSettings).not.toHaveBeenCalled();
   });
 
   it('rejeita quando a sessão já está ENDED', async () => {
