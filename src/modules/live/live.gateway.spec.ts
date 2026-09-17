@@ -336,10 +336,16 @@ describe('LiveGateway participant removal', () => {
   function setupRemoval() {
     const base = setup(RoomParticipantRole.HOST);
     const { gateway } = base;
-    const { socket: target, emit: targetEmit, disconnect: targetDisconnect } = makeTargetSocket();
+    const {
+      socket: target,
+      emit: targetEmit,
+      disconnect: targetDisconnect,
+    } = makeTargetSocket();
 
     const state: LiveRoomStateService = (gateway as any).state;
-    state.join(details.id, target.data.identity as any, target.id, { status: details.status });
+    state.join(details.id, target.data.identity, target.id, {
+      status: details.status,
+    });
 
     const roomSet = new Set([base.socket.id, target.id]);
     const socketsMap = new Map<string, unknown>([
@@ -349,10 +355,8 @@ describe('LiveGateway participant removal', () => {
     (gateway as any).server = {
       to: jest.fn(() => ({ emit: base.serverEmit })),
       in: jest.fn(() => ({ socketsLeave: jest.fn() })),
-      sockets: {
-        adapter: { rooms: new Map([[`session:${details.id}`, roomSet]]) },
-        sockets: socketsMap,
-      },
+      adapter: { rooms: new Map([[`session:${details.id}`, roomSet]]) },
+      sockets: socketsMap,
     };
     return { ...base, target, targetEmit, targetDisconnect, state };
   }
@@ -375,12 +379,25 @@ describe('LiveGateway participant removal', () => {
   it('blocks removed participant from rejoining when requiresApproval is false', async () => {
     const { gateway, socket, snapshot } = setupRemoval();
     await gateway.onSessionJoin(socket as never, { sessionId: details.id });
-    gateway.onParticipantRemove(socket as never, { participantId: 'participant-1' });
+    gateway.onParticipantRemove(socket as never, {
+      participantId: 'participant-1',
+    });
 
     const rejoinSocket = {
       id: 'socket-rejoin',
-      data: { identity: { participantId: 'participant-1', name: 'Participante', role: RoomParticipantRole.PARTICIPANT, kind: 'account' as const } },
-      join: jest.fn(), leave: jest.fn(), emit: jest.fn(), to: jest.fn(() => ({ emit: jest.fn() })), disconnect: jest.fn(),
+      data: {
+        identity: {
+          participantId: 'participant-1',
+          name: 'Participante',
+          role: RoomParticipantRole.PARTICIPANT,
+          kind: 'account' as const,
+        },
+      },
+      join: jest.fn(),
+      leave: jest.fn(),
+      emit: jest.fn(),
+      to: jest.fn(() => ({ emit: jest.fn() })),
+      disconnect: jest.fn(),
     };
     snapshot.execute.mockResolvedValueOnce({
       session: details,
@@ -390,20 +407,38 @@ describe('LiveGateway participant removal', () => {
       transcript: [],
     });
 
-    const result = await gateway.onSessionJoin(rejoinSocket as never, { sessionId: details.id });
-    expect(result).toEqual({ ok: false, error: expect.objectContaining({ code: 'PARTICIPANT_REMOVED' }) });
+    const result = await gateway.onSessionJoin(rejoinSocket as never, {
+      sessionId: details.id,
+    });
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: 'PARTICIPANT_REMOVED' }),
+    });
   });
 
   it('routes removed participant to admission queue when requiresApproval is true', async () => {
     const { gateway, socket, snapshot } = setupRemoval();
     await gateway.onSessionJoin(socket as never, { sessionId: details.id });
-    gateway.onParticipantRemove(socket as never, { participantId: 'participant-1' });
+    gateway.onParticipantRemove(socket as never, {
+      participantId: 'participant-1',
+    });
 
     const detailsWithApproval = { ...details, requiresApproval: true };
     const rejoinSocket = {
       id: 'socket-rejoin',
-      data: { identity: { participantId: 'participant-1', name: 'Participante', role: RoomParticipantRole.PARTICIPANT, kind: 'account' as const } },
-      join: jest.fn(), leave: jest.fn(), emit: jest.fn(), to: jest.fn(() => ({ emit: jest.fn() })), disconnect: jest.fn(),
+      data: {
+        identity: {
+          participantId: 'participant-1',
+          name: 'Participante',
+          role: RoomParticipantRole.PARTICIPANT,
+          kind: 'account' as const,
+        },
+      },
+      join: jest.fn(),
+      leave: jest.fn(),
+      emit: jest.fn(),
+      to: jest.fn(() => ({ emit: jest.fn() })),
+      disconnect: jest.fn(),
     };
     snapshot.execute.mockResolvedValueOnce({
       session: detailsWithApproval,
@@ -413,9 +448,14 @@ describe('LiveGateway participant removal', () => {
       transcript: [],
     });
 
-    const result = await gateway.onSessionJoin(rejoinSocket as never, { sessionId: details.id });
+    const result = await gateway.onSessionJoin(rejoinSocket as never, {
+      sessionId: details.id,
+    });
     expect(result).toEqual({ ok: true });
-    expect(rejoinSocket.emit).toHaveBeenCalledWith('admission:waiting', expect.anything());
+    expect(rejoinSocket.emit).toHaveBeenCalledWith(
+      'admission:waiting',
+      expect.anything(),
+    );
   });
 
   it('refuses to remove the host', async () => {
@@ -425,16 +465,24 @@ describe('LiveGateway participant removal', () => {
     const result = gateway.onParticipantRemove(socket as never, {
       participantId: 'account-1',
     });
-    expect(result).toEqual({ ok: false, error: expect.objectContaining({ code: 'FORBIDDEN' }) });
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: 'FORBIDDEN' }),
+    });
   });
 
   it('non-manager cannot remove participants', async () => {
     const base = setup(RoomParticipantRole.PARTICIPANT);
-    await base.gateway.onSessionJoin(base.socket as never, { sessionId: details.id });
+    await base.gateway.onSessionJoin(base.socket as never, {
+      sessionId: details.id,
+    });
 
     const result = base.gateway.onParticipantRemove(base.socket as never, {
       participantId: 'some-other-participant',
     });
-    expect(result).toEqual({ ok: false, error: expect.objectContaining({ code: 'FORBIDDEN' }) });
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: 'FORBIDDEN' }),
+    });
   });
 });

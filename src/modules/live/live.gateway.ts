@@ -8,7 +8,7 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
+import { Namespace, Server, Socket } from 'socket.io';
 import { UserRepository } from '../auth/repositories/user.repository';
 import { AsrClientError } from '../asr/asr-client';
 import { parseAudioSegment } from '../asr/audio-segment';
@@ -514,7 +514,10 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
       }
       const targetParticipant = this.state.getParticipant(sessionId, targetId);
       if (!targetParticipant) {
-        return this.errorAck('NOT_FOUND', 'Participant not found in this session');
+        return this.errorAck(
+          'NOT_FOUND',
+          'Participant not found in this session',
+        );
       }
       if (targetParticipant.role === RoomParticipantRole.HOST) {
         return this.errorAck('FORBIDDEN', 'Cannot remove the host');
@@ -525,12 +528,11 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
         `[moderation] session=${sessionId} removed_by=${identity.participantId} removed=${targetId} at=${new Date().toISOString()}`,
       );
 
-      const room = this.server.sockets.adapter.rooms.get(roomOf(sessionId));
+      const ns = this.server as unknown as Namespace;
+      const room = ns.adapter.rooms.get(roomOf(sessionId));
       if (room) {
         for (const socketId of Array.from(room)) {
-          const s = this.server.sockets.sockets.get(socketId) as
-            | LiveSocket
-            | undefined;
+          const s = ns.sockets.get(socketId) as LiveSocket | undefined;
           if (s?.data?.identity?.participantId === targetId) {
             s.emit('participant:removed', {
               reason: 'Você foi removido da sala pelo anfitrião.',
@@ -628,11 +630,11 @@ export class LiveGateway implements OnGatewayInit, OnGatewayDisconnect {
   }
 
   private getHostSocket(sessionId: string): LiveSocket | null {
-    const room = this.server.sockets.adapter.rooms.get(roomOf(sessionId));
+    const ns = this.server as unknown as Namespace;
+    const room = ns.adapter.rooms.get(roomOf(sessionId));
     if (!room) return null;
     for (const socketId of room) {
-      const s = this.server.sockets.sockets.get(socketId) as
-        LiveSocket | undefined;
+      const s = ns.sockets.get(socketId) as LiveSocket | undefined;
       if (s?.data?.identity?.role === RoomParticipantRole.HOST) return s;
     }
     return null;
