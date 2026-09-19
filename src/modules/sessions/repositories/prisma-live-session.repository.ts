@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '../../../../generated/prisma';
 import { PrismaService } from '../../../database/prisma.service';
 import { AudienceContext } from '../entities/audience-context.entity';
 import {
@@ -105,7 +104,7 @@ export class PrismaRoomSessionRepository extends RoomSessionRepository {
     return toEntity(
       await this.prisma.roomSession.update({
         where: { id },
-        data: { audienceContext: context as unknown as Prisma.InputJsonValue },
+        data: { audienceContext: { ...context } },
       }),
     );
   }

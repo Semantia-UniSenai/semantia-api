@@ -1,4 +1,5 @@
 import { RoomParticipantRole } from '../rooms/entities/room.entity';
+import { MediaError } from '../media/errors/media.errors';
 import { RoomPermissionService } from '../rooms/room-permission.service';
 import { ChatMessage } from '../sessions/entities/chat-message.entity';
 import {
@@ -59,6 +60,8 @@ function setup(
       .mockResolvedValue({ ...details, status: SessionStatus.ENDED }),
   };
   const transcribeAudio = { execute: jest.fn() };
+  const issueMediaCredentials = { execute: jest.fn() };
+  const closeMediaRoom = { execute: jest.fn() };
   const gateway = new (LiveGateway as any)(
     {},
     {},
@@ -69,6 +72,8 @@ function setup(
     chat,
     end,
     transcribeAudio,
+    issueMediaCredentials,
+    closeMediaRoom,
   ) as LiveGateway;
   const serverEmit = jest.fn();
   (gateway as unknown as { server: unknown }).server = {
@@ -100,6 +105,8 @@ function setup(
     chat,
     end,
     transcribeAudio,
+    issueMediaCredentials,
+    closeMediaRoom,
     socketEmit,
     serverEmit,
   };
@@ -306,6 +313,230 @@ describe('LiveGateway generic identities', () => {
       },
     });
     expect(transcribeAudio.execute).not.toHaveBeenCalled();
+  });
+});
+
+describe('LiveGateway media credentials', () => {
+  const credentials = {
+    serverUrl: 'wss://media.example.test',
+    participantToken: 'short-lived-token',
+    expiresInSeconds: 600,
+  };
+
+  it.each([
+    [RoomParticipantRole.HOST, 'account'],
+    [RoomParticipantRole.PARTICIPANT, 'account'],
+    [RoomParticipantRole.GUEST, 'guest'],
+  ] as const)('issues credentials to an admitted %s', async (role, kind) => {
+    const { gateway, socket, issueMediaCredentials } = setup(role, kind);
+    issueMediaCredentials.execute.mockResolvedValue(credentials);
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+
+    await expect((gateway as any).onMediaCredentials(socket)).resolves.toEqual({
+      ok: true,
+      ...credentials,
+    });
+    expect(issueMediaCredentials.execute).toHaveBeenCalledWith({
+      sessionId: details.id,
+      participant: {
+        participantId: kind === 'guest' ? 'guest:1' : 'account-1',
+        name: 'Pessoa',
+        role,
+      },
+    });
+  });
+
+  it('throttles repeated credential issuance per admitted socket', async () => {
+    const { gateway, socket, issueMediaCredentials } = setup(
+      RoomParticipantRole.HOST,
+    );
+    issueMediaCredentials.execute.mockResolvedValue(credentials);
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+
+    await (gateway as any).onMediaCredentials(socket);
+    await (gateway as any).onMediaCredentials(socket);
+    await (gateway as any).onMediaCredentials(socket);
+
+    await expect((gateway as any).onMediaCredentials(socket)).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'RATE_LIMITED',
+        message: 'Wait before requesting new media credentials',
+      },
+    });
+    expect(issueMediaCredentials.execute).toHaveBeenCalledTimes(3);
+  });
+
+  it('rejects an unauthenticated socket', async () => {
+    const { gateway, socket, issueMediaCredentials } = setup(
+      RoomParticipantRole.PARTICIPANT,
+    );
+    socket.data.identity = undefined as never;
+
+    await expect((gateway as any).onMediaCredentials(socket)).resolves.toEqual({
+      ok: false,
+      error: { code: 'UNAUTHORIZED', message: 'Socket is not authenticated' },
+    });
+    expect(issueMediaCredentials.execute).not.toHaveBeenCalled();
+  });
+
+  it('rejects an authenticated socket that has not passed admission', async () => {
+    const { gateway, socket, issueMediaCredentials } = setup(
+      RoomParticipantRole.PARTICIPANT,
+    );
+
+    await expect((gateway as any).onMediaCredentials(socket)).resolves.toEqual({
+      ok: false,
+      error: { code: 'NOT_JOINED', message: 'Join a session first' },
+    });
+    expect(issueMediaCredentials.execute).not.toHaveBeenCalled();
+  });
+
+  it('returns the canonical read-only error for an ended session', async () => {
+    const { gateway, socket, snapshot, issueMediaCredentials } = setup(
+      RoomParticipantRole.HOST,
+    );
+    snapshot.execute.mockResolvedValueOnce({
+      session: { ...details, status: SessionStatus.ENDED },
+      role: RoomParticipantRole.HOST,
+      canManage: true,
+      chat: [],
+      transcript: [],
+    });
+    issueMediaCredentials.execute.mockRejectedValueOnce(
+      new MediaError('SESSION_READ_ONLY', 'Session is read-only'),
+    );
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+
+    await expect((gateway as any).onMediaCredentials(socket)).resolves.toEqual({
+      ok: false,
+      error: { code: 'SESSION_READ_ONLY', message: 'Session is read-only' },
+    });
+  });
+
+  it('sanitizes a provider failure without broadcasting credentials', async () => {
+    const { gateway, socket, issueMediaCredentials, serverEmit } = setup(
+      RoomParticipantRole.HOST,
+    );
+    issueMediaCredentials.execute.mockRejectedValueOnce(
+      new MediaError('MEDIA_UNAVAILABLE', 'Audio and video are unavailable', {
+        cause: new Error('api-secret=must-not-leak'),
+      }),
+    );
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+
+    await expect((gateway as any).onMediaCredentials(socket)).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'MEDIA_UNAVAILABLE',
+        message: 'Audio and video are unavailable',
+      },
+    });
+    expect(serverEmit).not.toHaveBeenCalledWith(
+      'media:credentials',
+      expect.anything(),
+    );
+  });
+
+  it('keeps media credentials out of session state', async () => {
+    const { gateway, socket, socketEmit } = setup(RoomParticipantRole.HOST);
+
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+
+    const state = socketEmit.mock.calls.find(
+      ([event]) => event === 'session:state',
+    )?.[1];
+    expect(state).toEqual(
+      expect.not.objectContaining({
+        serverUrl: expect.anything(),
+        participantToken: expect.anything(),
+      }),
+    );
+  });
+});
+
+describe('LiveGateway media cleanup', () => {
+  it('closes provider media after the canonical session transition', async () => {
+    const { gateway, socket, end, closeMediaRoom, serverEmit } = setup(
+      RoomParticipantRole.HOST,
+    );
+    closeMediaRoom.execute.mockResolvedValue(undefined);
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+
+    await expect(gateway.onSessionEnd(socket as never)).resolves.toEqual({
+      ok: true,
+    });
+    expect(closeMediaRoom.execute).toHaveBeenCalledTimes(1);
+    expect(closeMediaRoom.execute).toHaveBeenCalledWith(details.id);
+    expect(end.execute.mock.invocationCallOrder[0]).toBeLessThan(
+      closeMediaRoom.execute.mock.invocationCallOrder[0],
+    );
+    const endedBroadcast = serverEmit.mock.calls.find(
+      ([event]) => event === 'session:ended',
+    );
+    expect(endedBroadcast).toBeDefined();
+    expect(closeMediaRoom.execute.mock.invocationCallOrder[0]).toBeLessThan(
+      serverEmit.mock.invocationCallOrder.at(-1)!,
+    );
+  });
+
+  it('keeps the canonical end successful when provider cleanup fails', async () => {
+    const { gateway, socket, closeMediaRoom, serverEmit } = setup(
+      RoomParticipantRole.HOST,
+    );
+    const unsafeSessionId = 'session-1\nforged-log';
+    const cleanupWarning = jest
+      .spyOn((gateway as any).logger, 'warn')
+      .mockImplementation(() => undefined);
+    closeMediaRoom.execute.mockRejectedValueOnce(
+      new MediaError(
+        'MEDIA_CLEANUP_FAILED',
+        'The media room could not be closed',
+        { cause: new Error('api-secret=must-not-leak') },
+      ),
+    );
+    await gateway.onSessionJoin(socket as never, {
+      sessionId: unsafeSessionId,
+    });
+
+    const ack = await gateway.onSessionEnd(socket as never);
+
+    expect(ack).toEqual({ ok: true });
+    expect(closeMediaRoom.execute).toHaveBeenCalledWith(unsafeSessionId);
+    expect(serverEmit).toHaveBeenCalledWith(
+      'session:ended',
+      expect.objectContaining({ sessionId: unsafeSessionId }),
+    );
+    expect(JSON.stringify({ ack, calls: serverEmit.mock.calls })).not.toContain(
+      'must-not-leak',
+    );
+    expect(cleanupWarning).toHaveBeenCalledWith(
+      'Media cleanup failed for session session-1_forged-log: MEDIA_CLEANUP_FAILED',
+    );
+    expect(JSON.stringify(cleanupWarning.mock.calls)).not.toContain(
+      'must-not-leak',
+    );
+  });
+
+  it('does not close media when the canonical end fails', async () => {
+    const { gateway, socket, end, closeMediaRoom } = setup(
+      RoomParticipantRole.HOST,
+    );
+    const unexpectedError = jest
+      .spyOn((gateway as any).logger, 'error')
+      .mockImplementation(() => undefined);
+    end.execute.mockRejectedValueOnce(new Error('database unavailable'));
+    await gateway.onSessionJoin(socket as never, { sessionId: details.id });
+
+    await expect(gateway.onSessionEnd(socket as never)).resolves.toEqual({
+      ok: false,
+      error: { code: 'INTERNAL', message: 'Unexpected error' },
+    });
+    expect(closeMediaRoom.execute).not.toHaveBeenCalled();
+    expect(unexpectedError).toHaveBeenCalledWith(
+      'Unexpected gateway error',
+      expect.stringContaining('database unavailable'),
+    );
   });
 });
 

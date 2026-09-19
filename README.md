@@ -124,7 +124,7 @@ Módulos principais:
 - `POST /auth/signup`, `POST /auth/signin`, `GET /auth/me`;
 - scores e ranking em `/games`;
 - CRUD de vínculo escolar atual em `/classes`;
-- criação, resolução, consulta, transcript e encerramento em `/sessions`;
+- resolução, consulta e transcript em `/sessions`; encerramento somente pelo evento canônico `session:end`;
 - `GET /health`.
 
 ## Ambiente local
@@ -152,10 +152,18 @@ Variáveis:
 | `PORT` | porta HTTP, padrão 3000 |
 | `ASR_URL` | URL privada do serviço ASR |
 | `ASR_TIMEOUT_MS` | deadline da chamada interna, padrão 45000 ms |
+| `LIVEKIT_URL` | endpoint WSS do SFU LiveKit |
+| `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | credenciais exclusivas do backend |
+| `LIVEKIT_TOKEN_TTL_SECONDS` | validade da credencial efêmera, limitada a 600 s |
+| `LIVEKIT_REQUEST_TIMEOUT_SECONDS` | deadline do SDK server-side, limitado a 10 s |
 
 O serviço Python possui variáveis próprias documentadas em [`asr-service/README.md`](./asr-service/README.md).
 Credenciais futuras de STT/LLM devem permanecer em variáveis de ambiente do backend e nunca no
 frontend, banco, logs, docs ou prompts versionados. Nenhum fallback cloud está ativo.
+
+O LiveKit self-hosted deve operar com `room.auto_create: false`. A API cria a sala explicitamente
+antes de emitir credenciais; depois do encerramento canônico, `deleteRoom()` remove a sala e uma
+credencial antiga não pode recriá-la. Não habilite auto-criação no runtime de produção.
 
 ## Gates
 
