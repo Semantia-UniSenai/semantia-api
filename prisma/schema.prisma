@@ -25,6 +25,30 @@ enum SessionStatus {
   ENDED
 }
 
+enum TranscriptAdaptationStatus {
+  PENDING
+  SUCCEEDED
+  FALLBACK
+  BYPASSED
+}
+
+enum TranscriptAdaptationFailureCode {
+  DISABLED
+  MISCONFIGURED
+  NO_CONTEXT
+  HIGH_RISK
+  SUSPECT_INPUT
+  QUEUE_FULL
+  CIRCUIT_OPEN
+  TIMEOUT
+  RATE_LIMIT
+  CAPACITY
+  PROVIDER_ERROR
+  INVALID_RESPONSE
+  PRESERVATION_FAILED
+  PROCESS_INTERRUPTED
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String
@@ -87,18 +111,19 @@ model RoomMember {
 }
 
 model RoomSession {
-  id               String        @id @default(cuid())
-  title            String
-  roomId           String
-  joinToken        String        @unique
-  status           SessionStatus @default(PREPARING)
-  requiresApproval Boolean       @default(false)
-  audienceContext  Json?
-  createdAt        DateTime      @default(now())
-  startedAt        DateTime?
-  endedAt          DateTime?
+  id                     String        @id @default(cuid())
+  title                  String
+  roomId                 String
+  joinToken              String        @unique
+  status                 SessionStatus @default(PREPARING)
+  requiresApproval       Boolean       @default(false)
+  audienceContext        Json?
+  audienceContextVersion Int           @default(0)
+  createdAt              DateTime      @default(now())
+  startedAt              DateTime?
+  endedAt                DateTime?
 
-  room       Room                @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  room        Room                @relation(fields: [roomId], references: [id], onDelete: Cascade)
   transcripts TranscriptSegment[]
   messages    ChatMessage[]
 
@@ -107,20 +132,47 @@ model RoomSession {
 }
 
 model TranscriptSegment {
-  id              String   @id @default(cuid())
-  sessionId       String
-  clientSegmentId String
+  id                      String   @id @default(cuid())
+  sessionId               String
+  clientSegmentId         String
   seq                     Int
   text                    String
   cleaningStrategyVersion String   @default("legacy-unversioned")
   createdAt               DateTime @default(now())
 
-  session RoomSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session    RoomSession           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  adaptation TranscriptAdaptation?
 
   @@unique([sessionId, seq])
   @@unique([sessionId, clientSegmentId])
   @@index([sessionId, seq])
   @@map("transcript_segments")
+}
+
+model TranscriptAdaptation {
+  id                  String                           @id @default(cuid())
+  transcriptSegmentId String                           @unique
+  text                String?
+  status              TranscriptAdaptationStatus       @default(PENDING)
+  failureCode         TranscriptAdaptationFailureCode?
+  contextVersion      Int
+  contextSnapshot     Json
+  promptVersion       String
+  provider            String
+  model               String
+  latencyMs           Int?
+  inputTokens         Int?
+  cachedInputTokens   Int?
+  outputTokens        Int?
+  attemptCount        Int                              @default(0)
+  createdAt           DateTime                         @default(now())
+  updatedAt           DateTime                         @updatedAt
+  completedAt         DateTime?
+
+  transcriptSegment TranscriptSegment @relation(fields: [transcriptSegmentId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@map("transcript_adaptations")
 }
 
 model ChatMessage {

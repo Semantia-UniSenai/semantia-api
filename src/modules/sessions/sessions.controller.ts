@@ -84,7 +84,7 @@ export class SessionsController {
   @UseGuards(JwtAuthGuard)
   @ApiOperation({
     operationId: 'updateSessionContext',
-    summary: 'Set the audience context before starting the session',
+    summary: 'Set the audience context for subsequent transcript segments',
   })
   @ApiResponse({ status: 200, type: SessionDto })
   updateAudienceContext(

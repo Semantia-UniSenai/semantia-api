@@ -10,13 +10,13 @@
   },
   "license": "UNLICENSED",
   "scripts": {
-    "build": "nest build",
+    "build": "prisma generate && nest build && node scripts/package-prisma-client.mjs",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "copy:prisma": "node -e \"const{cpSync}=require('fs');cpSync('generated','dist/generated',{recursive:true,force:true})\"",
     "start:dev": "nest build && node -e \"require('fs').cpSync('generated','dist/generated',{recursive:true,force:true})\" && nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
+    "start:prod": "node dist/src/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -24,6 +24,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "benchmark:transcript-cleaning": "ts-node scripts/benchmark-transcript-cleaning.ts",
+    "evaluate:transcript-adaptation": "ts-node scripts/evaluate-transcript-adaptation.ts",
     "prisma:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
@@ -46,11 +47,13 @@
     "class-validator": "^0.15.1",
     "dotenv": "^17.4.2",
     "livekit-server-sdk": "2.18.0",
+    "groq-sdk": "^1.5.0",
     "pg": "^8.22.0",
     "prisma": "^7.9.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

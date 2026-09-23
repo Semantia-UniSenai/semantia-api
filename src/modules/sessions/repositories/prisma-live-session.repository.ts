@@ -20,6 +20,7 @@ type SessionRow = {
   status: string;
   requiresApproval: boolean;
   audienceContext: unknown;
+  audienceContextVersion: number;
   createdAt: Date;
   startedAt: Date | null;
   endedAt: Date | null;
@@ -104,7 +105,10 @@ export class PrismaRoomSessionRepository extends RoomSessionRepository {
     return toEntity(
       await this.prisma.roomSession.update({
         where: { id },
-        data: { audienceContext: { ...context } },
+        data: {
+          audienceContext: { ...context },
+          audienceContextVersion: { increment: 1 },
+        },
       }),
     );
   }
@@ -116,6 +120,7 @@ export class PrismaRoomSessionRepository extends RoomSessionRepository {
     const data: Record<string, unknown> = {};
     if (settings.audienceContext !== undefined) {
       data.audienceContext = settings.audienceContext;
+      data.audienceContextVersion = { increment: 1 };
     }
     if (settings.requiresApproval !== undefined) {
       data.requiresApproval = settings.requiresApproval;

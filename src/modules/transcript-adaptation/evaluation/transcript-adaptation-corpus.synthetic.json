@@ -1,0 +1,1245 @@
+{
+  "version": "synthetic-pt-br-v1",
+  "language": "pt-BR",
+  "promptVersion": "pt-br-accessible-v1",
+  "syntheticOnly": true,
+  "contextProfiles": {
+    "empresa-adultos-media": {
+      "meetingType": "empresa",
+      "ageRange": "adultos",
+      "portugueseFamiliarity": "media",
+      "domain": "Planejamento sintético",
+      "simplificationLevel": "moderada"
+    },
+    "escola-adolescentes-baixa": {
+      "meetingType": "escola",
+      "ageRange": "adolescentes",
+      "portugueseFamiliarity": "baixa",
+      "domain": "Atividade didática sintética",
+      "simplificationLevel": "alta"
+    },
+    "evento-adultos-alta": {
+      "meetingType": "evento",
+      "ageRange": "adultos",
+      "portugueseFamiliarity": "alta",
+      "domain": "Programação sintética",
+      "simplificationLevel": "leve"
+    },
+    "comunidade-misto-baixa": {
+      "meetingType": "comunidade",
+      "ageRange": "misto",
+      "portugueseFamiliarity": "baixa",
+      "domain": "Serviço comunitário sintético",
+      "simplificationLevel": "alta"
+    },
+    "palestra-adultos-media": {
+      "meetingType": "palestra",
+      "ageRange": "adultos",
+      "portugueseFamiliarity": "media",
+      "domain": "Orientação sintética",
+      "simplificationLevel": "moderada"
+    }
+  },
+  "cases": [
+    {
+      "id": "names-001",
+      "category": "names",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "Ana Souza apresentará o relatório.",
+      "candidate": {
+        "adaptedText": "Ana Souza vai apresentar o relatório.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "names-002",
+      "category": "names",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "Bruno Lima conduzirá a reunião.",
+      "candidate": {
+        "adaptedText": "Bruno Lima vai conduzir a reunião.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "names-003",
+      "category": "names",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "Carla Mendes revisará o documento.",
+      "candidate": {
+        "adaptedText": "Carla Mendes vai revisar o documento.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "names-004",
+      "category": "names",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "Diego Alves enviará a proposta.",
+      "candidate": {
+        "adaptedText": "Diego Alves vai enviar a proposta.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "names-005",
+      "category": "names",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "Elisa Rocha organizará o encontro.",
+      "candidate": {
+        "adaptedText": "Elisa Rocha vai organizar o encontro.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "numbers-001",
+      "category": "numbers",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "O lote contém 42 unidades.",
+      "candidate": {
+        "adaptedText": "O lote tem 42 unidades.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "numbers-002",
+      "category": "numbers",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "A turma possui 18 participantes.",
+      "candidate": {
+        "adaptedText": "A turma tem 18 participantes.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "numbers-003",
+      "category": "numbers",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "Foram aprovados 7 itens.",
+      "candidate": {
+        "adaptedText": "Foram aprovados 7 itens.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "numbers-004",
+      "category": "numbers",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "A lista possui 125 registros.",
+      "candidate": {
+        "adaptedText": "A lista tem 125 registros.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "numbers-005",
+      "category": "numbers",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "O formulário tem 3 etapas.",
+      "candidate": {
+        "adaptedText": "O formulário tem 3 etapas.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "percentages-001",
+      "category": "percentages",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "A meta chegou a 75%.",
+      "candidate": {
+        "adaptedText": "A meta atingiu 75%.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "percentages-002",
+      "category": "percentages",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "O desconto será de 12,5%.",
+      "candidate": {
+        "adaptedText": "O desconto será de 12,5%.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "percentages-003",
+      "category": "percentages",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "A pesquisa teve 90% de respostas.",
+      "candidate": {
+        "adaptedText": "A pesquisa recebeu 90% de respostas.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "percentages-004",
+      "category": "percentages",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "O índice caiu 4% neste mês.",
+      "candidate": {
+        "adaptedText": "O índice diminuiu 4% neste mês.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "percentages-005",
+      "category": "percentages",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "A carga está em 100%.",
+      "candidate": {
+        "adaptedText": "A carga está em 100%.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "money-001",
+      "category": "money",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "O orçamento é de R$ 1.200,00.",
+      "candidate": {
+        "adaptedText": "O orçamento total é R$ 1.200,00.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "money-002",
+      "category": "money",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "A taxa custa R$ 35,50.",
+      "candidate": {
+        "adaptedText": "A taxa custa R$ 35,50.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "money-003",
+      "category": "money",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "O reembolso será de R$ 800,00.",
+      "candidate": {
+        "adaptedText": "O valor do reembolso será R$ 800,00.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "money-004",
+      "category": "money",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "A inscrição custa R$ 20,00.",
+      "candidate": {
+        "adaptedText": "A inscrição tem o valor de R$ 20,00.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "money-005",
+      "category": "money",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "O limite é R$ 5.000,00.",
+      "candidate": {
+        "adaptedText": "O limite permanece em R$ 5.000,00.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "dates-001",
+      "category": "dates",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "A entrega será em 12/08/2026.",
+      "candidate": {
+        "adaptedText": "A entrega acontecerá em 12/08/2026.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "dates-002",
+      "category": "dates",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "O evento começa em 03/09/2026.",
+      "candidate": {
+        "adaptedText": "O evento começa em 03/09/2026.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "dates-003",
+      "category": "dates",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "A revisão ficou para 25/10/2026.",
+      "candidate": {
+        "adaptedText": "A revisão será em 25/10/2026.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "dates-004",
+      "category": "dates",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "O prazo termina em 01/11/2026.",
+      "candidate": {
+        "adaptedText": "O prazo acaba em 01/11/2026.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "dates-005",
+      "category": "dates",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "A consulta será em 09/12/2026.",
+      "candidate": {
+        "adaptedText": "A consulta ocorrerá em 09/12/2026.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "times-001",
+      "category": "times",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "A reunião começa às 09:30.",
+      "candidate": {
+        "adaptedText": "A reunião começa às 09:30.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "times-002",
+      "category": "times",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "O intervalo será às 10h15.",
+      "candidate": {
+        "adaptedText": "O intervalo será às 10h15.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "times-003",
+      "category": "times",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "A palestra termina às 18:00.",
+      "candidate": {
+        "adaptedText": "A palestra acaba às 18:00.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "times-004",
+      "category": "times",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "O atendimento abre às 08:45.",
+      "candidate": {
+        "adaptedText": "O atendimento começa às 08:45.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "times-005",
+      "category": "times",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "A atividade volta às 14h20.",
+      "candidate": {
+        "adaptedText": "A atividade recomeça às 14h20.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "negations-001",
+      "category": "negations",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "Não envie o arquivo hoje.",
+      "candidate": {
+        "adaptedText": "Não envie o arquivo hoje.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "negations-002",
+      "category": "negations",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "Nunca compartilhe a senha.",
+      "candidate": {
+        "adaptedText": "Nunca compartilhe a senha.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "negations-003",
+      "category": "negations",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "O acesso será sem cobrança.",
+      "candidate": {
+        "adaptedText": "O acesso continuará sem cobrança.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "negations-004",
+      "category": "negations",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "Ela não pode alterar o cadastro.",
+      "candidate": {
+        "adaptedText": "Ela não pode mudar o cadastro.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "negations-005",
+      "category": "negations",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "Nem o anfitrião pode apagar o histórico.",
+      "candidate": {
+        "adaptedText": "Nem o anfitrião pode excluir o histórico.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "conditions-001",
+      "category": "conditions",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "Se chover, a atividade será interna.",
+      "candidate": {
+        "adaptedText": "Se chover, a atividade acontecerá dentro do prédio.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "conditions-002",
+      "category": "conditions",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "Caso o sistema falhe, use o formulário.",
+      "candidate": {
+        "adaptedText": "Caso o sistema falhe, use o formulário.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "conditions-003",
+      "category": "conditions",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "Se houver vaga, a inscrição será aceita.",
+      "candidate": {
+        "adaptedText": "Se houver vaga, a inscrição será aceita.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "conditions-004",
+      "category": "conditions",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "Quando o sinal abrir, atravesse.",
+      "candidate": {
+        "adaptedText": "Quando o sinal abrir, atravesse.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "conditions-005",
+      "category": "conditions",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "Se o documento chegar, avise a equipe.",
+      "candidate": {
+        "adaptedText": "Se o documento chegar, avise a equipe.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "instructions-001",
+      "category": "instructions",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "Primeiro abra o menu e depois selecione a opção.",
+      "candidate": {
+        "adaptedText": "Primeiro abra o menu; depois, selecione a opção.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "instructions-002",
+      "category": "instructions",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "Digite o código e confirme o envio.",
+      "candidate": {
+        "adaptedText": "Digite o código; depois, confirme o envio.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "instructions-003",
+      "category": "instructions",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "Leia o aviso antes de continuar.",
+      "candidate": {
+        "adaptedText": "Leia o aviso antes de continuar.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "instructions-004",
+      "category": "instructions",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "Preencha o nome e salve o cadastro.",
+      "candidate": {
+        "adaptedText": "Preencha o nome; depois, salve o cadastro.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "instructions-005",
+      "category": "instructions",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "Escolha o arquivo e clique em enviar.",
+      "candidate": {
+        "adaptedText": "Escolha o arquivo; depois, clique em enviar.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "commands-001",
+      "category": "commands",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "Você deve fechar a porta.",
+      "candidate": {
+        "adaptedText": "Você deve fechar a porta.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "commands-002",
+      "category": "commands",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "A equipe precisa revisar o contrato.",
+      "candidate": {
+        "adaptedText": "A equipe precisa revisar o contrato.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "commands-003",
+      "category": "commands",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "Os visitantes não podem entrar.",
+      "candidate": {
+        "adaptedText": "Os visitantes não podem entrar.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "commands-004",
+      "category": "commands",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "O crachá é obrigatório.",
+      "candidate": {
+        "adaptedText": "O crachá é obrigatório.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "commands-005",
+      "category": "commands",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "Os participantes podem fazer perguntas.",
+      "candidate": {
+        "adaptedText": "Os participantes podem fazer perguntas.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "alerts-001",
+      "category": "alerts",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "Fogo no corredor. Evacue a sala.",
+      "candidate": {
+        "adaptedText": "Fogo no corredor. Evacue a sala.",
+        "decision": "literal",
+        "risk": "urgent"
+      },
+      "expectedOutcome": "high-risk-bypass"
+    },
+    {
+      "id": "alerts-002",
+      "category": "alerts",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "Há uma emergência médica na recepção.",
+      "candidate": {
+        "adaptedText": "Há uma emergência médica na recepção.",
+        "decision": "literal",
+        "risk": "urgent"
+      },
+      "expectedOutcome": "high-risk-bypass"
+    },
+    {
+      "id": "alerts-003",
+      "category": "alerts",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "Uma pessoa armada foi vista na entrada.",
+      "candidate": {
+        "adaptedText": "Uma pessoa armada foi vista na entrada.",
+        "decision": "literal",
+        "risk": "urgent"
+      },
+      "expectedOutcome": "high-risk-bypass"
+    },
+    {
+      "id": "alerts-004",
+      "category": "alerts",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "Perigo na escada. Afaste-se.",
+      "candidate": {
+        "adaptedText": "Perigo na escada. Afaste-se.",
+        "decision": "literal",
+        "risk": "urgent"
+      },
+      "expectedOutcome": "high-risk-bypass"
+    },
+    {
+      "id": "alerts-005",
+      "category": "alerts",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "Ocorreu um incêndio. Inicie a evacuação.",
+      "candidate": {
+        "adaptedText": "Ocorreu um incêndio. Inicie a evacuação.",
+        "decision": "literal",
+        "risk": "urgent"
+      },
+      "expectedOutcome": "high-risk-bypass"
+    },
+    {
+      "id": "urgency-001",
+      "category": "urgency",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "Desligue agora o equipamento.",
+      "candidate": {
+        "adaptedText": "Desligue agora o equipamento.",
+        "decision": "literal",
+        "risk": "urgent"
+      },
+      "expectedOutcome": "high-risk-bypass"
+    },
+    {
+      "id": "urgency-002",
+      "category": "urgency",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "Chame socorro imediatamente.",
+      "candidate": {
+        "adaptedText": "Chame socorro imediatamente.",
+        "decision": "literal",
+        "risk": "urgent"
+      },
+      "expectedOutcome": "high-risk-bypass"
+    },
+    {
+      "id": "urgency-003",
+      "category": "urgency",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "Não toque no fio exposto.",
+      "candidate": {
+        "adaptedText": "Não toque no fio exposto.",
+        "decision": "literal",
+        "risk": "urgent"
+      },
+      "expectedOutcome": "high-risk-bypass"
+    },
+    {
+      "id": "urgency-004",
+      "category": "urgency",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "Há sangramento. Peça socorro médico.",
+      "candidate": {
+        "adaptedText": "Há sangramento. Peça socorro médico.",
+        "decision": "literal",
+        "risk": "urgent"
+      },
+      "expectedOutcome": "high-risk-bypass"
+    },
+    {
+      "id": "urgency-005",
+      "category": "urgency",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "A ameaça continua. Afaste-se.",
+      "candidate": {
+        "adaptedText": "A ameaça continua. Afaste-se.",
+        "decision": "literal",
+        "risk": "urgent"
+      },
+      "expectedOutcome": "high-risk-bypass"
+    },
+    {
+      "id": "technical-terms-001",
+      "category": "technical-terms",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "A API usa o termo “timeout”.",
+      "candidate": {
+        "adaptedText": "A API usa o termo “timeout”.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "technical-terms-002",
+      "category": "technical-terms",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "O JWT expira após o acesso.",
+      "candidate": {
+        "adaptedText": "O JWT perde a validade após o acesso.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "technical-terms-003",
+      "category": "technical-terms",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "O banco usa PostgreSQL e SQL.",
+      "candidate": {
+        "adaptedText": "O banco usa PostgreSQL e SQL.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "technical-terms-004",
+      "category": "technical-terms",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "O evento “session:join” inicia a entrada.",
+      "candidate": {
+        "adaptedText": "O evento “session:join” inicia a entrada.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "technical-terms-005",
+      "category": "technical-terms",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "A conexão usa HTTPS e TLS.",
+      "candidate": {
+        "adaptedText": "A conexão usa HTTPS e TLS.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "ambiguities-001",
+      "category": "ambiguities",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "Ele disse que talvez volte depois.",
+      "candidate": {
+        "adaptedText": "Ele disse que talvez volte depois.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "ambiguities-002",
+      "category": "ambiguities",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "A pessoa pode chegar cedo ou tarde.",
+      "candidate": {
+        "adaptedText": "A pessoa pode chegar cedo ou tarde.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "ambiguities-003",
+      "category": "ambiguities",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "O resultado parece adequado.",
+      "candidate": {
+        "adaptedText": "O resultado parece adequado.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "ambiguities-004",
+      "category": "ambiguities",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "Talvez a reunião mude de sala.",
+      "candidate": {
+        "adaptedText": "Talvez a reunião mude de sala.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "ambiguities-005",
+      "category": "ambiguities",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "O pedido pode ser aprovado amanhã.",
+      "candidate": {
+        "adaptedText": "O pedido pode ser aprovado amanhã.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "keep-literal-001",
+      "category": "keep-literal",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "Sim.",
+      "candidate": {
+        "adaptedText": "Sim.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "keep-literal-002",
+      "category": "keep-literal",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "Não.",
+      "candidate": {
+        "adaptedText": "Não.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "keep-literal-003",
+      "category": "keep-literal",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "Talvez.",
+      "candidate": {
+        "adaptedText": "Talvez.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "keep-literal-004",
+      "category": "keep-literal",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "Entendido.",
+      "candidate": {
+        "adaptedText": "Entendido.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "keep-literal-005",
+      "category": "keep-literal",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "Aguarde.",
+      "candidate": {
+        "adaptedText": "Aguarde.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "identifiers-001",
+      "category": "identifiers",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "A tarefa é SEM-42.",
+      "candidate": {
+        "adaptedText": "A tarefa tem o código SEM-42.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "identifiers-002",
+      "category": "identifiers",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "O chamado é SUP-108.",
+      "candidate": {
+        "adaptedText": "O chamado tem o código SUP-108.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "identifiers-003",
+      "category": "identifiers",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "Use o item DOC-7.",
+      "candidate": {
+        "adaptedText": "Use o item DOC-7.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "identifiers-004",
+      "category": "identifiers",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "O lote é ABC-900.",
+      "candidate": {
+        "adaptedText": "O lote tem o código ABC-900.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "identifiers-005",
+      "category": "identifiers",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "A referência é EVT-31.",
+      "candidate": {
+        "adaptedText": "A referência tem o código EVT-31.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "contact-001",
+      "category": "contact",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "Acesse https://exemplo.org/ajuda.",
+      "candidate": {
+        "adaptedText": "Acesse https://exemplo.org/ajuda.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "contact-002",
+      "category": "contact",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "Envie para teste@exemplo.org.",
+      "candidate": {
+        "adaptedText": "Envie para teste@exemplo.org.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "contact-003",
+      "category": "contact",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "Ligue para (11) 99999-0000.",
+      "candidate": {
+        "adaptedText": "Ligue para (11) 99999-0000.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "contact-004",
+      "category": "contact",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "Consulte https://exemplo.org/guia.",
+      "candidate": {
+        "adaptedText": "Consulte https://exemplo.org/guia.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "contact-005",
+      "category": "contact",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "Escreva para suporte@exemplo.com.",
+      "candidate": {
+        "adaptedText": "Escreva para suporte@exemplo.com.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "measurements-001",
+      "category": "measurements",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "A caixa pesa 12 kg.",
+      "candidate": {
+        "adaptedText": "A caixa tem o peso de 12 kg.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "measurements-002",
+      "category": "measurements",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "Use 250 ml de água.",
+      "candidate": {
+        "adaptedText": "Use 250 ml de água.",
+        "decision": "literal",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted-literal"
+    },
+    {
+      "id": "measurements-003",
+      "category": "measurements",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "A distância é de 3 km.",
+      "candidate": {
+        "adaptedText": "A distância total é de 3 km.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "measurements-004",
+      "category": "measurements",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "O cabo mede 2 m.",
+      "candidate": {
+        "adaptedText": "O cabo tem 2 m.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "measurements-005",
+      "category": "measurements",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "A temperatura chegou a 38 °C.",
+      "candidate": {
+        "adaptedText": "A temperatura atingiu 38 °C.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "accepted"
+    },
+    {
+      "id": "preservation-number-failure-001",
+      "category": "preservation-number-failure",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "O prazo é 42 dias.",
+      "candidate": {
+        "adaptedText": "O prazo é 43 dias.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "preservation-fallback"
+    },
+    {
+      "id": "preservation-number-failure-002",
+      "category": "preservation-number-failure",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "A meta é 80%.",
+      "candidate": {
+        "adaptedText": "A meta é 85%.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "preservation-fallback"
+    },
+    {
+      "id": "preservation-number-failure-003",
+      "category": "preservation-number-failure",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "O valor é R$ 50,00.",
+      "candidate": {
+        "adaptedText": "O valor é R$ 60,00.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "preservation-fallback"
+    },
+    {
+      "id": "preservation-number-failure-004",
+      "category": "preservation-number-failure",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "A data é 10/10/2026.",
+      "candidate": {
+        "adaptedText": "A data é 11/10/2026.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "preservation-fallback"
+    },
+    {
+      "id": "preservation-number-failure-005",
+      "category": "preservation-number-failure",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "O início será às 09:00.",
+      "candidate": {
+        "adaptedText": "O início será às 10:00.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "preservation-fallback"
+    },
+    {
+      "id": "preservation-modality-failure-001",
+      "category": "preservation-modality-failure",
+      "contextProfile": "empresa-adultos-media",
+      "literalText": "Não envie o relatório.",
+      "candidate": {
+        "adaptedText": "Envie o relatório.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "preservation-fallback"
+    },
+    {
+      "id": "preservation-modality-failure-002",
+      "category": "preservation-modality-failure",
+      "contextProfile": "escola-adolescentes-baixa",
+      "literalText": "Você deve confirmar a inscrição.",
+      "candidate": {
+        "adaptedText": "Você pode confirmar a inscrição.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "preservation-fallback"
+    },
+    {
+      "id": "preservation-modality-failure-003",
+      "category": "preservation-modality-failure",
+      "contextProfile": "evento-adultos-alta",
+      "literalText": "A entrada é proibida.",
+      "candidate": {
+        "adaptedText": "A entrada é permitida.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "preservation-fallback"
+    },
+    {
+      "id": "preservation-modality-failure-004",
+      "category": "preservation-modality-failure",
+      "contextProfile": "comunidade-misto-baixa",
+      "literalText": "Os visitantes não podem entrar.",
+      "candidate": {
+        "adaptedText": "Os visitantes podem entrar.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "preservation-fallback"
+    },
+    {
+      "id": "preservation-modality-failure-005",
+      "category": "preservation-modality-failure",
+      "contextProfile": "palestra-adultos-media",
+      "literalText": "Nunca divulgue a senha.",
+      "candidate": {
+        "adaptedText": "Divulgue a senha.",
+        "decision": "adapted",
+        "risk": "none"
+      },
+      "expectedOutcome": "preservation-fallback"
+    }
+  ]
+}

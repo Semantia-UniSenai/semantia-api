@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   NotFoundException,
@@ -96,6 +97,44 @@ describe('UpdateSessionContextUseCase', () => {
     await expect(
       useCase.execute('participant-1', 'session-1', context),
     ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('atualiza o contexto em sessão LIVE e retorna a nova versão', async () => {
+    const { useCase, sessions, rooms } = buildUseCase();
+    const session = buildSession({
+      status: SessionStatus.LIVE,
+      audienceContextVersion: 1,
+    });
+    const updated = buildSession({
+      status: SessionStatus.LIVE,
+      audienceContext: context,
+      audienceContextVersion: 2,
+    });
+    sessions.findById.mockResolvedValue(session);
+    rooms.getParticipantRole.mockResolvedValue(RoomParticipantRole.HOST);
+    sessions.updateSettings.mockResolvedValue(updated);
+
+    const result = await useCase.execute('host-1', session.id, context);
+
+    expect(sessions.updateSettings).toHaveBeenCalledWith(session.id, {
+      audienceContext: context,
+      requiresApproval: undefined,
+    });
+    expect(result.audienceContext).toEqual(context);
+    expect(result.audienceContextVersion).toBe(2);
+  });
+
+  it('rejeita contexto inicial parcial para não criar snapshot inválido', async () => {
+    const { useCase, sessions, rooms } = buildUseCase();
+    sessions.findById.mockResolvedValue(
+      buildSession({ status: SessionStatus.LIVE, audienceContext: null }),
+    );
+    rooms.getParticipantRole.mockResolvedValue(RoomParticipantRole.HOST);
+
+    await expect(
+      useCase.execute('host-1', 'session-1', { domain: 'Matemática' }),
+    ).rejects.toThrow(BadRequestException);
+    expect(sessions.updateSettings).not.toHaveBeenCalled();
   });
 
   it('rejeita quando a sessão já está ENDED', async () => {
