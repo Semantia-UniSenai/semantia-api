@@ -1,0 +1,58 @@
+name: Testes
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: semantia
+          POSTGRES_PASSWORD: semantia
+          POSTGRES_DB: semantia_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U semantia"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://semantia:semantia@localhost:5432/semantia_test?schema=public
+      JWT_SECRET: ci-only-secret
+      CORS_ORIGIN: '*'
+      ASR_URL: http://127.0.0.1:8000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prisma generate
+      - name: Testes unitários (Jest)
+        run: pnpm test
+      - name: Migrações no banco de teste
+        run: pnpm exec prisma migrate deploy
+      - name: Teste de integração com PostgreSQL real
+        run: pnpm test:e2e
+      - name: Corpus sintético do agente de adaptação (100 frases)
+        run: pnpm evaluate:transcript-adaptation
+
+  asr:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: asr-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -e ".[test]"
+      - name: Testes do serviço de reconhecimento (pytest)
+        run: pytest -q
