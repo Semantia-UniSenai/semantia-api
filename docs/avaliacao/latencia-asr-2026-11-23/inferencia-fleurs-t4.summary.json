@@ -1,0 +1,55 @@
+{
+  "corpus": "fleurs-pt_br",
+  "corpusDescription": "Google FLEURS pt_br (dev), fala humana lida, CC BY 4.0",
+  "windows": 72,
+  "repeats": 3,
+  "measurements": 216,
+  "config": {
+    "model": "small",
+    "computeType": "int8",
+    "device": "cpu",
+    "cpuThreads": 4,
+    "beamSize": 5,
+    "vad": false
+  },
+  "hardware": {
+    "cpu": "Intel(R) Xeon(R) 6975P-C",
+    "logicalCpus": 4,
+    "affinity": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "python": "3.12.16",
+    "platform": "Linux-7.0.0-1014-aws-x86_64-with-glibc2.39"
+  },
+  "modelLoadMs": 993,
+  "inferenceMs": {
+    "n": 216,
+    "mean": 1495.0925925925926,
+    "median": 1386.0,
+    "p95": 1633.75,
+    "stdev": 920.7502101690069,
+    "min": 1144,
+    "max": 11743
+  },
+  "inferenceMsFullWindows": {
+    "n": 213,
+    "mean": 1498.5211267605634,
+    "median": 1386,
+    "p95": 1634.1999999999998,
+    "stdev": 926.7782783092697,
+    "min": 1144,
+    "max": 11743
+  },
+  "rtf": {
+    "n": 216,
+    "mean": 0.29930449334616,
+    "median": 0.2772,
+    "p95": 0.32675,
+    "stdev": 0.18409008902965407,
+    "min": 0.2288,
+    "max": 2.3486
+  },
+  "werIndicative": 0.1426448736998514
