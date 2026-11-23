@@ -1,0 +1,124 @@
+name: Latência do ASR (Whisper)
+
+# Mede o tempo de transcrição do Whisper (faster-whisper small, int8, CPU) por
+# janela de 5 s e a latência ponta a ponta até a legenda chegar ao convidado.
+# Roda sob demanda ou quando os scripts de benchmark mudam.
+on:
+  workflow_dispatch:
+    inputs:
+      repeats:
+        description: Repetições por janela no teste de inferência
+        default: '5'
+      passes:
+        description: Passadas em tempo real no teste ponta a ponta
+        default: '2'
+  push:
+    paths:
+      - asr-service/benchmarks/**
+      - scripts/benchmark-caption-latency.mjs
+      - .github/workflows/latencia-asr.yml
+
+jobs:
+  latencia:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: semantia
+          POSTGRES_PASSWORD: semantia
+          POSTGRES_DB: semantia_bench
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U semantia"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      REPEATS: ${{ inputs.repeats || '5' }}
+      PASSES: ${{ inputs.passes || '2' }}
+      RESULTS: ${{ github.workspace }}/asr-service/results
+      HF_HOME: ${{ github.workspace }}/.hf
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Hardware do runner
+        run: |
+          lscpu | grep -E 'Model name|^CPU\(s\)|Thread|MHz' || true
+          free -m
+          nproc
+      - name: Dependências do ASR e do benchmark
+        working-directory: asr-service
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg espeak-ng
+          pip install -e . jiwer==4.0.0 piper-tts==1.8.0
+      - name: Áudio de teste (FLEURS pt_br e 100 frases do corpus)
+        working-directory: asr-service
+        run: |
+          python benchmarks/prepare_corpus.py fleurs --out bench/fleurs --utterances 30 \
+            || echo "::warning::FLEURS indisponível; os testes usam só as 100 frases"
+          python benchmarks/prepare_corpus.py corpus100 --out bench/corpus100 \
+            --corpus-json ../src/modules/transcript-adaptation/evaluation/transcript-adaptation-corpus.synthetic.json
+      - name: Baixa o modelo Whisper small (fora da medição)
+        working-directory: asr-service
+        run: python -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')"
+
+      - name: Inferência, configuração de produção (2 threads em 2 núcleos), FLEURS
+        working-directory: asr-service
+        if: hashFiles('asr-service/bench/fleurs/manifest.json') != ''
+        run: taskset -c 0,1 python benchmarks/latency.py --corpus bench/fleurs --threads 2 --repeats "$REPEATS" --out "$RESULTS/inferencia-fleurs-t2.csv"
+      - name: Inferência, configuração de produção (2 threads em 2 núcleos), 100 frases
+        working-directory: asr-service
+        run: taskset -c 0,1 python benchmarks/latency.py --corpus bench/corpus100 --threads 2 --repeats 3 --out "$RESULTS/inferencia-corpus100-t2.csv"
+      - name: Inferência com 4 threads em 4 núcleos (teto do servidor previsto), FLEURS
+        working-directory: asr-service
+        if: hashFiles('asr-service/bench/fleurs/manifest.json') != ''
+        run: python benchmarks/latency.py --corpus bench/fleurs --threads 4 --repeats 3 --out "$RESULTS/inferencia-fleurs-t4.csv"
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Build da API
+        env:
+          DATABASE_URL: postgresql://semantia:semantia@localhost:5432/semantia_bench?schema=public
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm exec prisma migrate deploy
+      - name: Ponta a ponta (API + ASR reais, envio em tempo real a cada 5 s)
+        env:
+          DATABASE_URL: postgresql://semantia:semantia@localhost:5432/semantia_bench?schema=public
+          JWT_SECRET: bench-only-secret
+          CORS_ORIGIN: '*'
+          ASR_URL: http://127.0.0.1:8000
+          PORT: '3000'
+          API_URL: http://127.0.0.1:3000
+        run: |
+          (cd asr-service && ASR_MODEL=small ASR_COMPUTE_TYPE=int8 ASR_CPU_THREADS=2 \
+            taskset -c 0,1 uvicorn asr_service.main:app --host 127.0.0.1 --port 8000 > "$RUNNER_TEMP/asr.log" 2>&1 &)
+          taskset -c 2,3 node dist/src/main.js > "$RUNNER_TEMP/api.log" 2>&1 &
+          for i in $(seq 1 120); do curl -sf http://127.0.0.1:8000/ready && break; sleep 2; done
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:3000/api/health && break; sleep 1; done
+          echo
+          CORPUS=fleurs; [ -f asr-service/bench/fleurs/manifest.json ] || CORPUS=corpus100
+          taskset -c 2,3 node scripts/benchmark-caption-latency.mjs --corpus "asr-service/bench/$CORPUS" \
+            --passes "$PASSES" --out "$RESULTS/ponta-a-ponta-$CORPUS.csv"
+
+      - name: Resumo
+        if: always()
+        working-directory: asr-service
+        run: |
+          python benchmarks/report.py results > results/RESUMO.md || true
+          for f in bench/*/manifest.json; do cp "$f" "results/manifest-$(basename "$(dirname "$f")").json"; done
+          cat results/RESUMO.md >> "$GITHUB_STEP_SUMMARY" || true
+          echo "===== RESUMO ====="; cat results/RESUMO.md || true
+          for f in results/*.summary.json; do echo "===== $f ====="; cat "$f"; done
+          for f in results/*.csv results/*.txt; do echo "===== $f ====="; cat "$f"; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: latencia-asr
+          path: asr-service/results/
