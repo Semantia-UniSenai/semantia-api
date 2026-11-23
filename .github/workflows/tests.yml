@@ -36,6 +36,12 @@ jobs:
       - run: pnpm exec prisma generate
       - name: Testes unitários (Jest)
         run: pnpm test
+      - name: Cobertura dos testes unitários (Jest)
+        run: pnpm exec jest --coverage --coverageReporters=text-summary --coverageReporters=text | tee coverage.txt
+      - name: Resumo da cobertura
+        run: |
+          echo '### Cobertura dos testes unitários da API' >> "$GITHUB_STEP_SUMMARY"
+          sed -n '/Coverage summary/,/=====$/p' coverage.txt | sed '1d;$d' >> "$GITHUB_STEP_SUMMARY" || true
       - name: Migrações no banco de teste
         run: pnpm exec prisma migrate deploy
       - name: Teste de integração com PostgreSQL real
