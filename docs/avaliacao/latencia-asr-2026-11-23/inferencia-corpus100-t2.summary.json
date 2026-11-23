@@ -1,0 +1,53 @@
+{
+  "corpus": "corpus100-tts",
+  "corpusDescription": "100 frases literalText do corpus sintético, voz sintetizada (Piper TTS, voz pt_BR-faber-medium)",
+  "windows": 57,
+  "repeats": 3,
+  "measurements": 171,
+  "config": {
+    "model": "small",
+    "computeType": "int8",
+    "device": "cpu",
+    "cpuThreads": 2,
+    "beamSize": 5,
+    "vad": false
+  },
+  "hardware": {
+    "cpu": "Intel(R) Xeon(R) 6975P-C",
+    "logicalCpus": 4,
+    "affinity": [
+      0,
+      1
+    ],
+    "python": "3.12.16",
+    "platform": "Linux-7.0.0-1014-aws-x86_64-with-glibc2.39"
+  },
+  "modelLoadMs": 968,
+  "inferenceMs": {
+    "n": 171,
+    "mean": 1305.327485380117,
+    "median": 1296,
+    "p95": 1415.0,
+    "stdev": 66.45483476497019,
+    "min": 1176,
+    "max": 1499
+  },
+  "inferenceMsFullWindows": {
+    "n": 168,
+    "mean": 1306.1845238095239,
+    "median": 1297.5,
+    "p95": 1415.0,
+    "stdev": 66.71753307887789,
+    "min": 1176,
+    "max": 1499
+  },
+  "rtf": {
+    "n": 171,
+    "mean": 0.26158086829761473,
+    "median": 0.2596,
+    "p95": 0.2831,
+    "stdev": 0.013478904949598417,
+    "min": 0.2352,
+    "max": 0.2998
+  },
+  "werIndicative": 0.24543610547667344
